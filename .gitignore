@@ -35,3 +35,6 @@ ui/dist/
 .DS_Store
 Thumbs.db
 *.log
+
+# Claude Code
+.claude/

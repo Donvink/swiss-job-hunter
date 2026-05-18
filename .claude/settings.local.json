@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(curl -s -A \"Mozilla/5.0 \\(Macintosh; Intel Mac OS X 10_15_7\\) AppleWebKit/537.36\" \"https://ch.indeed.com/rss?q=ML+engineer&l=Z%C3%BCrich&fromage=30\")"
-    ]
-  }
-}
