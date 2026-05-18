@@ -180,9 +180,11 @@ async def run_search(req: SearchRequest):
             yield f"→ {source_name}"
             new_count = 0
 
+            found_count = 0
             try:
                 async with scraper_cls() as scraper:
                     async for scraped in scraper.scrape(req.keyword, req.location, req.pages):
+                        found_count += 1
                         try:
                             if is_exact_duplicate(scraped.title, scraped.company, scraped.location):
                                 continue
@@ -200,7 +202,7 @@ async def run_search(req: SearchRequest):
                                         )
                                         session.add(raw)
                                 except Exception:
-                                    pass  # raw_jobs duplicate — harmless, ignore
+                                    pass
                                 new_count += 1
                                 yield f"  + [{source_name}] {scraped.title[:50]} @ {scraped.company}"
                         except Exception as e:
@@ -210,7 +212,12 @@ async def run_search(req: SearchRequest):
                 yield f"✗ {source_name} failed: {str(e)[:120]}"
                 continue
 
-            yield f"✓ {source_name}: +{new_count} new jobs"
+            if found_count == 0:
+                yield f"✓ {source_name}: +0 new jobs (scraper returned 0 results)"
+            elif new_count == 0:
+                yield f"✓ {source_name}: +0 new jobs ({found_count} found, all duplicates)"
+            else:
+                yield f"✓ {source_name}: +{new_count} new jobs"
             total_new += new_count
 
         yield f"✓ Done — {total_new} total new jobs"

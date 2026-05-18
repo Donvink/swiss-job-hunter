@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 
 from scrapers.base import BaseScraper, ScrapedJob
 
-_BASE_URL = "https://www.züri.jobs"
+_BASE_URL = "https://www.zueri.jobs"
 _SEARCH_URL = f"{_BASE_URL}/jobs"
 
 
@@ -110,23 +110,36 @@ class ZuriJobsScraper(BaseScraper):
             return None
 
     def _parse_html(self, soup: BeautifulSoup):  # type: ignore[override]
-        """Fallback HTML card parser."""
-        for card in soup.select("article, div.job-item, div.vacancy"):
+        for card in soup.select("div.job-listings-item"):
             try:
-                title_el = card.select_one("h2, h3, .title")
-                if not title_el:
+                link_el = card.select_one("a.job-details-link")
+                if not link_el:
                     continue
-                title = title_el.get_text(strip=True)
-                company_el = card.select_one(".company, .employer")
-                company = company_el.get_text(strip=True) if company_el else "Unknown"
-                loc_el = card.select_one(".location")
-                location = loc_el.get_text(strip=True) if loc_el else "Zürich"
-                link = card.select_one("a[href]")
-                href = link["href"] if link else ""
+                title_el = link_el.select_one("h3, h2")
+                title = title_el.get_text(strip=True) if title_el else link_el.get_text(strip=True)
+                if not title:
+                    continue
+
+                href = link_el.get("href", "")
                 url = href if href.startswith("http") else f"{_BASE_URL}{href}"
+
+                logo = card.select_one("div.job-employer-logo img")
+                company = logo.get("alt", "Unknown").strip() if logo else "Unknown"
+
+                loc_el = card.select_one("div.job-tags")
+                location = "Zürich"
+                if loc_el:
+                    for tag in loc_el.get_text(separator="|", strip=True).split("|"):
+                        if "zürich" in tag.lower() or "zurich" in tag.lower() or "📍" in tag:
+                            location = tag.replace("📍", "").strip()
+                            break
+
+                job_id = card.get("data-jobid", "")
+
                 yield ScrapedJob(
                     title=title, company=company, location=location,
                     description="", url=url, source=self.source_name,
+                    source_job_id=job_id,
                 )
             except Exception:
                 continue

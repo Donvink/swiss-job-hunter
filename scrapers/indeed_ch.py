@@ -1,17 +1,16 @@
 """
 Scraper for Indeed Switzerland — uses the public RSS feed.
-The Playwright approach was blocked by Indeed's bot detection.
 """
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 from typing import AsyncGenerator, Optional
-from urllib.parse import urlencode, quote_plus
+from urllib.parse import urlencode
 
 from scrapers.base import BaseScraper, ScrapedJob
 
-_BASE_URL = "https://ch.indeed.com"
-_RSS_URL = f"{_BASE_URL}/rss"
+_RSS_URL = "https://ch.indeed.com/rss"
 
 
 class IndeedChScraper(BaseScraper):
@@ -32,23 +31,44 @@ class IndeedChScraper(BaseScraper):
             try:
                 resp = await self._fetch(url)
             except Exception as exc:
-                print(f"[indeed.ch] RSS fetch error p{page_num + 1}: {exc}")
-                break
+                raise RuntimeError(f"indeed.ch RSS fetch failed (page {page_num + 1}): {exc}")
+
+            ct = resp.headers.get("content-type", "")
+            if resp.status_code != 200 or "Security Check" in resp.text:
+                raise RuntimeError(
+                    f"indeed.ch blocked by Cloudflare (HTTP {resp.status_code})"
+                )
+            if "xml" not in ct and not resp.text.strip().startswith("<"):
+                raise RuntimeError(
+                    f"indeed.ch RSS returned unexpected content-type={ct!r}; "
+                    f"preview: {resp.text[:120]!r}"
+                )
 
             try:
                 root = ET.fromstring(resp.text)
             except ET.ParseError as exc:
-                print(f"[indeed.ch] XML parse error p{page_num + 1}: {exc}")
-                break
+                raise RuntimeError(f"indeed.ch XML parse failed: {exc}; preview: {resp.text[:120]!r}")
 
             items = root.findall(".//item")
             if not items:
-                break
+                raise RuntimeError(
+                    f"indeed.ch RSS: valid XML but 0 <item> elements; "
+                    f"root tag={root.tag!r}; preview={resp.text[:200]!r}"
+                )
 
+            parsed = 0
             for item in items:
                 job = self._parse_item(item)
                 if job:
+                    parsed += 1
                     yield job
+            if parsed == 0:
+                first = items[0]
+                raise RuntimeError(
+                    f"indeed.ch RSS: {len(items)} items found but all failed to parse; "
+                    f"first item tags={[c.tag for c in first]!r}; "
+                    f"title={first.findtext('title')!r}"
+                )
 
     def _parse_item(self, item: ET.Element) -> Optional[ScrapedJob]:
         try:
@@ -58,7 +78,6 @@ class IndeedChScraper(BaseScraper):
 
             link = (item.findtext("link") or "").strip()
 
-            # <indeed:jobkey> or extract from link
             job_key = ""
             jk_el = item.find("{com.indeed}jobkey")
             if jk_el is not None and jk_el.text:
@@ -66,10 +85,7 @@ class IndeedChScraper(BaseScraper):
             if not job_key and "jk=" in link:
                 job_key = link.split("jk=")[-1].split("&")[0]
 
-            # Company and location are in <source> and the description
             company = (item.findtext("source") or "").strip() or "Unknown"
-
-            # <indeed:company> if present
             co_el = item.find("{com.indeed}company")
             if co_el is not None and co_el.text:
                 company = co_el.text.strip()
@@ -83,8 +99,6 @@ class IndeedChScraper(BaseScraper):
             description = ""
             desc_el = item.find("description")
             if desc_el is not None and desc_el.text:
-                # Strip HTML tags from RSS snippet
-                import re
                 description = re.sub(r"<[^>]+>", "", desc_el.text).strip()
 
             salary_el = item.find("{com.indeed}salary")

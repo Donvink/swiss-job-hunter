@@ -31,7 +31,7 @@ const EVENT_META = {
   note:           { icon: "📝",  label: "Note",              color: "#4a7a60" },
 };
 
-const SOURCES = ["jobs.ch","swissdevjobs.ch","indeed.ch","jobup.ch","züri.jobs","efinancialcareers.ch","linkedin.com"];
+const SOURCES = ["jobs.ch","swissdevjobs.ch","jobup.ch","züri.jobs","efinancialcareers.ch","linkedin.com"];
 
 const APPLY_METHODS = [
   { id: "email",    label: "Email",    icon: "📧" },
@@ -629,7 +629,7 @@ export default function App() {
                   <div style={{fontSize:9,color:"#5a7a68",letterSpacing:"0.12em",fontWeight:700,marginBottom:2}}>② PIPELINE</div>
                   <Btn onClick={()=>{
                     // Enrich each source separately
-                    const sources = searchSrc.filter(s => ["jobs.ch","swissdevjobs.ch"].includes(s));
+                    const sources = searchSrc.filter(s => ["jobs.ch","swissdevjobs.ch","jobup.ch","züri.jobs"].includes(s));
                     sources.forEach(src => runStream("run/enrich",{limit:50,source:src},`enrich-${src}`));
                     if(!sources.length) runStream("run/enrich",{limit:50,source:"jobs.ch"},"enrich");
                   }}

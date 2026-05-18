@@ -11,8 +11,12 @@ from urllib.parse import urlencode
 
 from scrapers.base import BaseScraper, ScrapedJob
 
-_API_BASE = "https://www.jobup.ch/api/v1/search/jobs/"
+_API_BASE = "https://job-search-api.jobup.ch/search"
 _PAGE_SIZE = 20
+_HEADERS = {
+    "Origin": "https://www.jobup.ch",
+    "Referer": "https://www.jobup.ch/",
+}
 
 
 class JobupChScraper(BaseScraper):
@@ -31,13 +35,13 @@ class JobupChScraper(BaseScraper):
             url = f"{_API_BASE}?{urlencode(params)}"
 
             try:
-                resp = await self._fetch(url)
+                resp = await self._fetch(url, headers=_HEADERS)
                 data = resp.json()
             except Exception as exc:
                 print(f"[jobup.ch] page {page} error: {exc}")
                 break
 
-            jobs = data.get("documents", data.get("jobs", []))
+            jobs = data.get("documents", [])
             if not jobs:
                 break
 
@@ -46,15 +50,15 @@ class JobupChScraper(BaseScraper):
                 if job:
                     yield job
 
-            total = data.get("num_hits", data.get("total", 0))
-            if page * _PAGE_SIZE >= total:
+            if page >= data.get("numPages", 1):
                 break
 
     def _parse(self, doc: dict) -> Optional[ScrapedJob]:
         try:
             title = doc.get("title", "").strip()
             company = (doc.get("company") or {}).get("name", "Unknown").strip()
-            location = (doc.get("place") or {}).get("name", "Switzerland").strip()
+            place = doc.get("place", "")
+            location = (place if isinstance(place, str) else (place or {}).get("name", "Switzerland")).strip() or "Switzerland"
 
             description = doc.get("teaser", "") or doc.get("description", "")
             slug = doc.get("slug", "") or str(doc.get("id", ""))
