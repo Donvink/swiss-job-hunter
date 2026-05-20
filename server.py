@@ -34,7 +34,7 @@ app.add_middleware(
 
 # ── DB helpers ─────────────────────────────────────────────────────────────────
 
-def get_jobs_query(status: str = "all", q: str = ""):
+def get_jobs_query(status: str = "all", q: str = "", direction: str = "all"):
     from db.session import get_session
     from db.models import Job
     from sqlalchemy import or_
@@ -43,6 +43,8 @@ def get_jobs_query(status: str = "all", q: str = ""):
         query = session.query(Job)
         if status != "all":
             query = query.filter(Job.status == status)
+        if direction != "all":
+            query = query.filter(Job.direction == direction)
         if q:
             query = query.filter(
                 or_(
@@ -67,6 +69,7 @@ def get_jobs_query(status: str = "all", q: str = ""):
                 "status": j.status,
                 "match_score": j.match_score,
                 "match_explanation": j.match_explanation,
+                "direction": j.direction,
                 "posted_at": j.posted_at.isoformat() if j.posted_at else None,
                 "scraped_at": j.scraped_at.isoformat() if j.scraped_at else None,
             }
@@ -77,10 +80,10 @@ def get_jobs_query(status: str = "all", q: str = ""):
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @app.get("/jobs")
-def list_jobs(status: str = "all", q: str = ""):
+def list_jobs(status: str = "all", q: str = "", direction: str = "all"):
     from db.session import init_db
     init_db()
-    return get_jobs_query(status, q)
+    return get_jobs_query(status, q, direction)
 
 
 @app.get("/stats")
@@ -171,6 +174,7 @@ class SearchRequest(BaseModel):
     sources: list[str] = ["jobs.ch"]
     pages: int = 3
     semantic: bool = False
+    direction: Optional[str] = None
 
 
 @app.post("/run/search")
@@ -203,7 +207,7 @@ async def run_search(req: SearchRequest):
                         try:
                             if is_exact_duplicate(scraped.title, scraped.company, scraped.location):
                                 continue
-                            job, created = get_or_create_job(scraped)
+                            job, created = get_or_create_job(scraped, direction=req.direction or None)
                             if created:
                                 try:
                                     with get_session() as session:
@@ -342,6 +346,7 @@ class AnalyzeRequest(BaseModel):
     min_score: float = 0.3
     skip_scored: bool = True
     archive_below: float = 0.1  # auto-archive jobs scoring below this (LLM mode only)
+    direction: Optional[str] = None
 
 
 @app.post("/run/analyze")
@@ -352,7 +357,7 @@ async def run_analyze(req: AnalyzeRequest):
         from db.session import get_session
 
         try:
-            cv_text = load_cv_text()
+            cv_text = load_cv_text(direction=req.direction or None)
         except FileNotFoundError as e:
             yield f"✗ {e}"
             return
@@ -362,6 +367,8 @@ async def run_analyze(req: AnalyzeRequest):
                 session.query(Job)
                 .filter(Job.status.in_([JobStatus.NEW, JobStatus.ANALYZED, JobStatus.SHORTLISTED, JobStatus.VIEWED]))
             )
+            if req.direction:
+                query = query.filter(Job.direction == req.direction)
             if req.skip_scored:
                 query = query.filter(Job.match_score.is_(None))
             jobs = query.order_by(Job.scraped_at.desc()).limit(req.limit).all()

@@ -244,7 +244,11 @@ Return ONLY valid JSON (no markdown):
     )
 
 
-def load_cv_text(path: Optional[Path] = None) -> str:
+def load_cv_text(path: Optional[Path] = None, direction: Optional[str] = None) -> str:
+    if direction:
+        candidate = Path(f"./data/cv_{direction}.txt")
+        if candidate.exists():
+            return candidate.read_text(encoding="utf-8")
     p = path or settings.cv_text_path
     if not p.exists():
         raise FileNotFoundError(

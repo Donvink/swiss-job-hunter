@@ -2,13 +2,13 @@
 
 # 🇨🇭 Swiss Job Hunter
 
-**Automated job search, deduplication, scoring, and application tracking for Switzerland**
+**Automated job search, scoring, and application tracking for Switzerland**
 
 [![CI](https://github.com/Donvink/swiss-job-hunter/actions/workflows/ci.yml/badge.svg)](https://github.com/Donvink/swiss-job-hunter/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-[Features](#features) · [Quick Start](#quick-start) · [UI](#ui) · [CLI](#cli) · [Architecture](#architecture)
+[Features](#features) · [Quick Start](#quick-start) · [UI](#ui) · [Multi-Direction](#multi-direction-search) · [Architecture](#architecture)
 
 ![Swiss Job Hunter UI](docs/screenshot.png)
 
@@ -18,15 +18,14 @@
 
 ## Why
 
-Job searching in Switzerland is fragmented — the same listing appears on jobs.ch, Indeed, LinkedIn, and three other platforms simultaneously. You end up manually deduplicating, copy-pasting cover letters, and losing track of what you applied to.
+Job searching in Switzerland is fragmented — the same listing appears on jobs.ch, LinkedIn, JobScout24, and several other platforms simultaneously. You end up manually deduplicating, copy-pasting cover letters, and losing track of what you applied to.
 
 Swiss Job Hunter automates the boring parts:
-- Scrapes 7 Swiss job boards, deduplicates across sources
-- Scores each job against your CV (keyword + LLM)
+- Scrapes 8 Swiss job boards and deduplicates across sources
+- Scores each job against your CV (fast keyword match + LLM deep analysis)
 - Generates tailored cover letters via Claude / DeepSeek
-- Tracks every application with a Kanban board and timeline
-
-Built by a Senior ML/Perception Engineer relocating to Zürich on a B permit.
+- Tracks every application with a Kanban board and event timeline
+- Supports multiple job directions (e.g. ML Engineer + Perception Engineer) with separate CVs
 
 ---
 
@@ -34,14 +33,17 @@ Built by a Senior ML/Perception Engineer relocating to Zürich on a B permit.
 
 | | Feature |
 |---|---|
-| ⬇ | **Multi-source scraping** — jobs.ch, SwissDevJobs, Indeed CH, jobup.ch, Züri.Jobs, eFinancialCareers, LinkedIn RSS |
+| ⬇ | **Multi-source scraping** — 8 Swiss job boards, httpx + Playwright |
 | 🔁 | **Smart deduplication** — SHA-256 exact match + MiniLM semantic similarity |
-| 📄 | **Full JD enrichment** — fetches complete job descriptions beyond preview snippets |
+| 📄 | **Full JD enrichment** — fetches complete descriptions beyond preview snippets |
 | ⭐ | **CV matching** — weighted keyword scoring + LLM deep analysis (Claude / DeepSeek) |
+| 🎯 | **Direction tagging** — separate directions (e.g. ML / Perception) with independent CVs |
+| 🏢 | **Company lookup** — LLM-generated company summaries, cached per company |
 | ✍ | **Cover letter generation** — personalized EN/DE letters via Claude API |
-| 📋 | **Kanban tracker** — Viewed → Applied → Interview → Offer pipeline |
-| 🕐 | **Timeline** — per-job event log (recruiter call, interviews, offer, rejection) |
-| 🌐 | **Web UI** — React dashboard + FastAPI backend |
+| 🌐 | **Description translation** — translate JDs to English on demand |
+| 📋 | **Kanban tracker** — NEW → Viewed → Applied → Interview → Offer |
+| 🕐 | **Timeline** — per-job event log (recruiter calls, interviews, offers, rejections) |
+| 🗑 | **Bulk purge** — preview and delete low-scoring jobs by threshold |
 | ⌨ | **CLI** — full terminal interface for power users |
 
 ---
@@ -59,11 +61,9 @@ Built by a Senior ML/Perception Engineer relocating to Zürich on a B permit.
 git clone https://github.com/Donvink/swiss-job-hunter.git
 cd swiss-job-hunter
 
-# Python dependencies
 pip install -r requirements.txt
 playwright install chromium
 
-# Frontend dependencies
 cd ui && npm install && cd ..
 ```
 
@@ -73,19 +73,17 @@ cd ui && npm install && cd ..
 cp .env.example .env
 ```
 
-Edit `.env` — at minimum set your API key:
+Edit `.env`:
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...   # Claude API
-# or
-DEEPSEEK_API_KEY=sk-...        # DeepSeek (cheaper)
-LLM_PROVIDER=auto              # auto = round-robin between configured providers
+ANTHROPIC_API_KEY=sk-ant-...   # Claude API (cover letters, LLM scoring, company lookup)
+DEEPSEEK_API_KEY=sk-...        # DeepSeek — cheaper alternative for scoring
+LLM_PROVIDER=auto              # auto = use whichever key is configured
 ```
 
 ### 3. Add your CV
 
 ```bash
-# Copy your CV as plain text
 cp your_cv.txt data/cv.txt
 ```
 
@@ -105,17 +103,47 @@ Open **http://localhost:5173**
 
 ## UI
 
-The web dashboard guides you through the full pipeline:
+The sidebar guides you through the full pipeline:
 
 ```
-① SEARCH  →  ② ENRICH  →  ③ SCORE  →  ④ COVER LETTER  →  ⑤ APPLY  →  ⑥ TRACK
+① SEARCH → ② PIPELINE (Enrich → Score → Company Lookup → Purge) → FILTER → LOG
 ```
 
-**BOARD** — Browse and filter all jobs, auto-marks as Viewed when opened
+**① SEARCH** — Pick a direction (ALL / ML / PERCEPTION), set keyword + location, select sources, hit RUN SEARCH. New jobs are tagged with the active direction.
 
-**TRACKER** — Kanban board showing your active applications across all stages
+**② PIPELINE**
+- **ENRICH DESCRIPTIONS** — fetches full JDs for jobs that only have a preview snippet
+- **SCORE (KEYWORD)** — fast TF-IDF-style match against your CV, no API cost
+- **SCORE (LLM)** — deep analysis via Claude/DeepSeek; auto-archives jobs below the threshold
+- **LOOKUP COMPANIES** — generates a short LLM summary for each company, cached
+- **PREVIEW / PURGE** — dry-run or delete scored jobs below a score threshold
 
-**TIMELINE** — Per-job event log to track every interaction
+**FILTER** — filter by status (NEW / SHORTLISTED / APPLIED / …) and free-text search
+
+**LOG** — live SSE output from every pipeline operation
+
+**BOARD** — job list with score bars, status badges, and direction tags; click a job to inspect, translate, generate a cover letter, or apply
+
+**TRACKER** — Kanban board across all application stages
+
+---
+
+## Multi-Direction Search
+
+If you're targeting multiple job types with different CVs:
+
+```bash
+# One CV per direction — filename convention: data/cv_{direction}.txt
+cp your_ml_cv.txt      data/cv_ml.txt
+cp your_perception_cv.txt data/cv_perception.txt
+```
+
+In the UI, select **ML** or **PERCEPTION** before searching or scoring. The system:
+- Tags scraped jobs with the active direction
+- Loads the matching CV automatically when scoring
+- Lets you filter the job list by direction
+
+You can add more directions by placing additional `data/cv_{name}.txt` files and using the direction name in the UI. The `data/cv.txt` file is used as a fallback for the default (ALL) mode.
 
 ---
 
@@ -123,7 +151,7 @@ The web dashboard guides you through the full pipeline:
 
 ```bash
 # Scrape jobs
-sjh search "perception engineer" --location "Zürich" --source jobs.ch
+sjh search "ML engineer" --location "Zürich" --source jobs.ch
 
 # Enrich with full descriptions
 sjh enrich --source jobs.ch
@@ -144,12 +172,28 @@ sjh digest
 
 ---
 
+## Supported Job Boards
+
+| Source | Method | Notes |
+|---|---|---|
+| jobs.ch | JSON API + HTML detail | Primary Swiss board |
+| jobscout24.ch | JSON API | Large Swiss generalist board |
+| jobup.ch | JSON API + HTML detail | French-speaking Switzerland |
+| swissdevjobs.ch | HTML / BS4 | IT & software focused |
+| züri.jobs | JSON-LD + HTML | Zürich-focused |
+| efinancialcareers.ch | JSON + HTML | Finance & banking |
+| linkedin.com | RSS feed | Public feed, no login required |
+| michael-page.ch | HTML / BS4 | Executive & specialist roles |
+| indeed.ch | Playwright | JS-rendered; requires Chromium |
+
+---
+
 ## Architecture
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
 │   scrapers/ │────▶│  dedup/      │────▶│  db/        │
-│  7 sources  │     │  exact +     │     │  SQLite     │
+│  8 sources  │     │  exact +     │     │  SQLite     │
 │  httpx +    │     │  semantic    │     │  jobs.db    │
 │  playwright │     └──────────────┘     └──────┬──────┘
 └─────────────┘                                 │
@@ -174,26 +218,12 @@ sjh digest
 | Layer | Tech |
 |---|---|
 | Scraping | `httpx`, `playwright`, `beautifulsoup4` |
-| Dedup | SHA-256 + `sentence-transformers` (MiniLM) |
+| Dedup | SHA-256 + `sentence-transformers` (MiniLM-L6) |
 | Storage | SQLite + SQLAlchemy 2.x |
 | LLM | Anthropic Claude + DeepSeek (OpenAI-compatible) |
 | Backend | FastAPI + SSE streaming |
 | Frontend | React 18 + Vite |
 | CLI | Typer + Rich |
-
----
-
-## Supported Job Boards
-
-| Source | Method | Notes |
-|---|---|---|
-| jobs.ch | JSON API + HTML detail | Primary Swiss board |
-| jobup.ch | JSON API | French-speaking Switzerland |
-| SwissDevJobs | HTML / BS4 | IT/software focused |
-| Indeed CH | Playwright | JS-rendered, anti-bot |
-| Züri.Jobs | JSON-LD + HTML | Zürich-focused |
-| eFinancialCareers | JSON-LD + HTML | Finance & tech |
-| LinkedIn | RSS feed | Public feed, no login |
 
 ---
 
@@ -216,7 +246,7 @@ class MyBoardScraper(BaseScraper):
 
 ## WSL / Windows Notes
 
-If running on WSL with Windows browser, add to `~/.wslconfig`:
+If running on WSL with a Windows browser, add to `~/.wslconfig`:
 
 ```ini
 [wsl2]

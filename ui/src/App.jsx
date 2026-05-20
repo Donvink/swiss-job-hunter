@@ -33,6 +33,8 @@ const EVENT_META = {
 
 const SOURCES = ["jobs.ch","jobscout24.ch","swissdevjobs.ch","jobup.ch","züri.jobs","efinancialcareers.ch","linkedin.com","michael-page.ch"];
 
+const DIRECTIONS = ["ml", "perception"];
+
 const APPLY_METHODS = [
   { id: "email",    label: "Email",    icon: "📧" },
   { id: "form",     label: "Web Form", icon: "🌐" },
@@ -424,6 +426,7 @@ export default function App() {
   const [coverLang, setCoverLang] = useState("en");
   const [archiveBelow, setArchiveBelow] = useState(10); // percent
   const [purgeBelow, setPurgeBelow] = useState(10); // percent
+  const [direction, setDirection] = useState("all");
   const [mainTab, setMainTab] = useState("board");   // board | tracker
   const [rightTab, setRightTab] = useState("detail"); // detail | timeline | apply
   const [applyModal, setApplyModal] = useState(false);
@@ -439,13 +442,13 @@ export default function App() {
 
   const fetchJobs = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/jobs?status=${filterStatus}&q=${encodeURIComponent(filterText)}`);
+      const r = await fetch(`${API}/jobs?status=${filterStatus}&q=${encodeURIComponent(filterText)}&direction=${direction}`);
       if (r.ok) { setJobs(await r.json()); setBackendOk(true); }
     } catch {
       if (backendOk) addLog("✗ Backend offline — run: python server.py");
       setBackendOk(false);
     }
-  }, [filterStatus, filterText, addLog, backendOk]);
+  }, [filterStatus, filterText, direction, addLog, backendOk]);
 
   const fetchStats = useCallback(async () => {
     try { const r=await fetch(`${API}/stats`); if(r.ok) setStats(await r.json()); } catch {}
@@ -666,6 +669,17 @@ export default function App() {
                 {/* Search */}
                 <div style={{padding:"10px 12px",borderBottom:"1px solid #d4dece"}}>
                   <div style={{fontSize:9,color:"#5a7a68",letterSpacing:"0.12em",fontWeight:700,marginBottom:6}}>① SEARCH</div>
+                  <div style={{display:"flex",gap:3,marginBottom:7}}>
+                    {["all",...DIRECTIONS].map(d=>(
+                      <button key={d} onClick={()=>setDirection(d)} style={{
+                        flex:1,fontSize:8,padding:"3px 0",borderRadius:3,border:"1px solid",
+                        borderColor:direction===d?"#2e7d5240":"#d4dece",
+                        background:direction===d?"#2e7d5215":"transparent",
+                        color:direction===d?"#2e7d52":"#6b8c7a",
+                        cursor:"pointer",fontFamily:"monospace",fontWeight:700,letterSpacing:"0.05em",
+                      }}>{d.toUpperCase()}</button>
+                    ))}
+                  </div>
                   <input value={searchKw} onChange={e=>setSearchKw(e.target.value)}
                     placeholder="keyword" style={{...inp,marginBottom:5}}/>
                   <input value={searchLoc} onChange={e=>setSearchLoc(e.target.value)}
@@ -688,7 +702,7 @@ export default function App() {
                       }}>{s.replace(/\.(ch|com)/,"")}</button>
                     ))}
                   </div>
-                  <Btn onClick={()=>runStream("run/search",{keyword:searchKw,location:searchLoc,sources:searchSrc,pages:3,semantic:false},"search")}
+                  <Btn onClick={()=>runStream("run/search",{keyword:searchKw,location:searchLoc,sources:searchSrc,pages:3,semantic:false,direction:direction==="all"?null:direction},"search")}
                     loading={loading.search} label="RUN SEARCH" icon="⬇" color="#2e7d52"/>
                 </div>
 
@@ -703,11 +717,11 @@ export default function App() {
                   }}
                     loading={loading.enrich} label="ENRICH DESCRIPTIONS" icon="📄"
                     color="#2e7d52" disabled={!stats.total}/>
-                  <Btn onClick={()=>runStream("run/analyze",{limit:100,llm:false},"analyze")}
+                  <Btn onClick={()=>runStream("run/analyze",{limit:100,llm:false,direction:direction==="all"?null:direction},"analyze")}
                     loading={loading.analyze} label="SCORE (KEYWORD)" icon="⚡"
                     color="#f59e0b" disabled={!stats.total}/>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <Btn onClick={()=>runStream("run/analyze",{limit:200,llm:true,archive_below:archiveBelow/100},"analyze-llm")}
+                    <Btn onClick={()=>runStream("run/analyze",{limit:200,llm:true,archive_below:archiveBelow/100,direction:direction==="all"?null:direction},"analyze-llm")}
                       loading={loading["analyze-llm"]} label="SCORE (LLM)" icon="🧠"
                       color="#a78bfa" disabled={!stats.total}/>
                     <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}>
@@ -804,8 +818,13 @@ export default function App() {
                         </div>
                         <Badge status={j.status}/>
                         <ScoreBar score={j.match_score}/>
-                        <div style={{fontSize:8,color:"#6b8c7a",textAlign:"right",fontFamily:"monospace"}}>
-                          {j.source?.replace(/\.(ch|com)/,"")}
+                        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2}}>
+                          {j.direction&&<span style={{fontSize:7,fontFamily:"monospace",fontWeight:700,
+                            color:"#fff",background:"#2e7d52",padding:"1px 4px",borderRadius:2,letterSpacing:"0.06em"}}>
+                            {j.direction.toUpperCase()}</span>}
+                          <div style={{fontSize:8,color:"#6b8c7a",fontFamily:"monospace"}}>
+                            {j.source?.replace(/\.(ch|com)/,"")}
+                          </div>
                         </div>
                         <button onClick={e=>{e.stopPropagation();deleteJob(j.id);}} title="Delete"
                           style={{border:"none",background:"none",color:"#b0c4b8",cursor:"pointer",

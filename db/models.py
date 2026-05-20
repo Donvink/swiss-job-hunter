@@ -79,6 +79,9 @@ class Job(Base):
     skills_extracted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     posted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    # Direction tag (e.g. "ml", "perception") — links job to a specific CV
+    direction: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+
     # Pipeline state
     status: Mapped[str] = mapped_column(Enum(JobStatus), default=JobStatus.NEW, index=True)
     match_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

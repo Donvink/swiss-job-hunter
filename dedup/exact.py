@@ -5,6 +5,7 @@ Fast, runs on every insert.
 from __future__ import annotations
 
 import re
+from typing import Optional
 
 from db.models import Job
 from db.session import get_session
@@ -28,7 +29,7 @@ def is_exact_duplicate(title: str, company: str, location: str) -> bool:
         return session.query(Job).filter(Job.dedup_hash == h).count() > 0
 
 
-def get_or_create_job(scraped: ScrapedJob) -> tuple[Job, bool]:
+def get_or_create_job(scraped: ScrapedJob, direction: Optional[str] = None) -> tuple[Job, bool]:
     """
     Return (job, created).
     The returned Job is expunged from the session so it can be safely
@@ -60,6 +61,7 @@ def get_or_create_job(scraped: ScrapedJob) -> tuple[Job, bool]:
             remote_ok=scraped.remote_ok,
             language_required=scraped.language_required,
             posted_at=scraped.posted_at,
+            direction=direction,
         )
         session.add(job)
         session.flush()         # get DB-assigned id
