@@ -36,8 +36,8 @@ Swiss Job Hunter automates the boring parts:
 | ⬇ | **Multi-source scraping** — 8 Swiss job boards, httpx + Playwright; search Switzerland-wide or by city |
 | 🔁 | **Smart deduplication** — SHA-256 exact match + MiniLM semantic similarity |
 | 📄 | **Full JD enrichment** — fetches complete descriptions beyond preview snippets |
-| ⭐ | **CV matching** — weighted keyword scoring + LLM deep analysis (Claude / DeepSeek) |
-| 🎯 | **Direction tagging** — auto-detected from `data/cv_*.txt` files; each direction uses its own CV |
+| ⭐ | **CV matching** — two-stage scoring: dynamic keyword pre-filter (LLM-extracted from CV, cached) then full LLM deep analysis; irrelevant jobs are archived before consuming tokens |
+| 🎯 | **Direction tagging** — auto-detected from `data/cv_*.txt` files; each direction uses its own CV and keyword cache |
 | 🏢 | **Company lookup** — LLM-generated company summaries, cached per company |
 | ✍ | **Cover letter generation** — personalized EN/DE letters via Claude API |
 | 🌐 | **Description translation** — translate JDs to English on demand |
@@ -123,11 +123,15 @@ The sidebar guides you through the full pipeline:
 
 **① SEARCH** — Pick a direction (ALL / AGENT / PERCEPTION / …), keyword, and location (leave blank for all Switzerland). Select sources and hit **RUN SEARCH**. New jobs are tagged with the active direction.
 
+When **LinkedIn** is selected, two extra dropdowns appear:
+- **Time range** — 24h / 7 days / 30 days
+- **Experience level** — Entry–Senior / Associate–Senior (default) / Senior only / Senior–Director; maps to LinkedIn's `f_E` filter and applied at source before any job is fetched
+
 **② PIPELINE**
 - **ENRICH DESCRIPTIONS** — fetches full JDs for jobs that only have a preview snippet
 - **ENRICH + LLM SCORE** — enriches then immediately scores with LLM in one step
-- **SCORE (KEYWORD)** — fast TF-IDF-style match against your CV, no API cost
-- **SCORE (LLM)** — deep analysis via Claude/DeepSeek; auto-archives jobs below the threshold
+- **SCORE (KEYWORD)** — fast keyword match against your CV, no API cost
+- **SCORE (LLM)** — two-stage: first runs a keyword pre-filter using skills extracted from your CV (cached to `data/cv_keywords_{direction}.json`); jobs below the keyword threshold are archived without an LLM call, the rest get full deep analysis via Claude/DeepSeek
 - **LOOKUP COMPANIES** — generates a short LLM summary for each company, cached
 - **PREVIEW / PURGE** — dry-run or delete scored jobs below a score threshold
 
@@ -199,7 +203,7 @@ sjh digest
 | swissdevjobs.ch | HTML / BS4 | IT & software focused |
 | züri.jobs | JSON-LD + HTML | Zürich-focused |
 | efinancialcareers.ch | JSON + HTML | Finance & banking |
-| linkedin.com | HTTP guest API | No login required; set `LINKEDIN_COOKIE` for more results |
+| linkedin.com | HTTP guest API | No login required; set `LINKEDIN_COOKIE` for more results; experience level filter (`f_E`) configurable in UI |
 | michael-page.ch | HTML / BS4 | Executive & specialist roles |
 | indeed.ch | Playwright | JS-rendered; requires Chromium |
 
