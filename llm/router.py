@@ -15,8 +15,11 @@ Usage:
 """
 from __future__ import annotations
 
+import asyncio
 import itertools
 from typing import Optional
+
+LLM_TIMEOUT = 60  # seconds; hung API calls are cancelled and re-raise TimeoutError
 
 from config.settings import settings
 
@@ -105,10 +108,11 @@ async def call_llm(
     p = provider or _next_provider()
 
     if p == "anthropic":
-        text = await _call_anthropic(system, user, max_tokens)
+        coro = _call_anthropic(system, user, max_tokens)
     elif p == "deepseek":
-        text = await _call_deepseek(system, user, max_tokens)
+        coro = _call_deepseek(system, user, max_tokens)
     else:
         raise ValueError(f"Unknown provider: {p}")
 
+    text = await asyncio.wait_for(coro, timeout=LLM_TIMEOUT)
     return text, p

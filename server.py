@@ -487,6 +487,9 @@ async def run_analyze(req: AnalyzeRequest):
 
         threshold = req.min_score if not req.llm else min(req.min_score, 0.2)
         yield f"Analyzing {len(job_data)} jobs (mode: {'LLM' if req.llm else 'keyword'}, concurrency: {req.concurrency if req.llm else 1})..."
+        if not job_data:
+            yield "✓ Nothing to score"
+            return
         shortlisted = 0
 
         if req.llm:

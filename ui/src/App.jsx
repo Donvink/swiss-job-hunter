@@ -37,8 +37,8 @@ const SOURCES = ["jobs.ch","jobscout24.ch","swissdevjobs.ch","jobup.ch","züri.j
 const DIRECTIONS_FALLBACK = ["agent", "perception"];
 
 const KEYWORD_PRESETS = {
-  perception: ["computer vision engineer", "ADAS engineer", "sensor fusion engineer", "autonomous driving engineer", "robotics engineer", "perception engineer"],
-  agent:      ["machine learning engineer", "AI engineer", "deep learning engineer", "LLM engineer"],
+  perception: ["computer vision engineer", "ADAS engineer", "sensor fusion engineer", "autonomous driving engineer", "robotics engineer", "perception engineer", "SLAM engineer", "robot perception engineer", "motion planning engineer", "autonomous systems engineer", "robotics software engineer"],
+  agent:      ["machine learning engineer", "AI engineer", "deep learning engineer", "LLM Application Engineer", "agentic AI", "GenAI engineer", "MLOps engineer", "AI software engineer", "applied scientist"],
 };
 
 const APPLY_METHODS = [
@@ -873,8 +873,8 @@ export default function App() {
                     const enrichable = ["jobs.ch","jobscout24.ch","swissdevjobs.ch","züri.jobs","efinancialcareers.ch","jobup.ch","linkedin.com","michael-page.ch"];
                     const sources = searchSrc.filter(s => enrichable.includes(s));
                     const dir = direction==="all"?null:direction;
-                    if(sources.length) sources.forEach(src => runStream("run/enrich",{limit:200,source:src,rescore_llm:false,direction:dir},`enrich-${src}`));
-                    else runStream("run/enrich",{limit:200,source:searchSrc[0]||"jobs.ch",rescore_llm:false,direction:dir},"enrich");
+                    if(sources.length) sources.forEach(src => runStream("run/enrich",{limit:9999,source:src,rescore_llm:false,direction:dir},`enrich-${src}`));
+                    else runStream("run/enrich",{limit:9999,source:searchSrc[0]||"jobs.ch",rescore_llm:false,direction:dir},"enrich");
                   }}
                     loading={loading.enrich} label="ENRICH DESCRIPTIONS" icon="📄"
                     color="#2e7d52" disabled={!stats.total}/>
@@ -882,16 +882,16 @@ export default function App() {
                     const enrichable = ["jobs.ch","jobscout24.ch","swissdevjobs.ch","züri.jobs","efinancialcareers.ch","jobup.ch","linkedin.com","michael-page.ch"];
                     const sources = searchSrc.filter(s => enrichable.includes(s));
                     const dir = direction==="all"?null:direction;
-                    if(sources.length) sources.forEach(src => runStream("run/enrich",{limit:200,source:src,rescore_llm:true,direction:dir},`enrich-llm-${src}`));
-                    else runStream("run/enrich",{limit:200,source:searchSrc[0]||"jobs.ch",rescore_llm:true,direction:dir},"enrich-llm");
+                    if(sources.length) sources.forEach(src => runStream("run/enrich",{limit:9999,source:src,rescore_llm:true,direction:dir},`enrich-llm-${src}`));
+                    else runStream("run/enrich",{limit:9999,source:searchSrc[0]||"jobs.ch",rescore_llm:true,direction:dir},"enrich-llm");
                   }}
                     loading={loading["enrich-llm"]} label="ENRICH + LLM SCORE" icon="🧠"
                     color="#a78bfa" disabled={!stats.total}/>
-                  <Btn onClick={()=>runStream("run/analyze",{limit:100,llm:false,direction:direction==="all"?null:direction},"analyze")}
+                  <Btn onClick={()=>runStream("run/analyze",{limit:9999,llm:false,direction:direction==="all"?null:direction},"analyze")}
                     loading={loading.analyze} label="SCORE (KEYWORD)" icon="⚡"
                     color="#f59e0b" disabled={!stats.total}/>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <Btn onClick={()=>runStream("run/analyze",{limit:200,llm:true,archive_below:threshold/100,direction:direction==="all"?null:direction},"analyze-llm")}
+                    <Btn onClick={()=>runStream("run/analyze",{limit:9999,llm:true,archive_below:threshold/100,direction:direction==="all"?null:direction},"analyze-llm")}
                       loading={loading["analyze-llm"]} label="SCORE (LLM)" icon="🧠"
                       color="#a78bfa" disabled={!stats.total}/>
                     <Btn onClick={()=>runStream("run/analyze",{llm:true,skip_scored:false,archive_below:threshold/100,concurrency:10,direction:direction==="all"?null:direction},"rescore-all")}
