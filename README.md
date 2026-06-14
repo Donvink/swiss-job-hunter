@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/Donvink/swiss-job-hunter/actions/workflows/ci.yml/badge.svg)](https://github.com/Donvink/swiss-job-hunter/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
 [Features](#features) · [Quick Start](#quick-start) · [UI](#ui) · [Multi-Direction](#multi-direction-search) · [Architecture](#architecture)
 
@@ -331,7 +331,9 @@ Then `wsl --shutdown` and restart.
 
 ## License
 
-MIT © [Leo Zhong](https://github.com/Donvink)
+AGPL-3.0 © [Leo Zhong](https://github.com/Donvink)
+
+If you use this code to provide a hosted service, you must release your modifications under the same license. For commercial use without open-sourcing your modifications, contact the author for a commercial license.
 
 ---
 

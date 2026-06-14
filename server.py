@@ -21,6 +21,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func
 
+from config.settings import settings
+
 app = FastAPI(title="Swiss Job Hunter API")
 
 app.add_middleware(
@@ -831,7 +833,7 @@ async def run_apply_email(req: ApplyEmailRequest):
         session.expunge(job)
 
     recipient = req.recipient_email or ""
-    subject = f"Application: {job.title} — Leo Zhong"
+    subject = f"Application: {job.title} — {settings.apply_from_name or settings.smtp_user}"
 
     if req.dry_run:
         return {
