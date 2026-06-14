@@ -55,10 +55,12 @@ async def generate_cover_letter(
     print(f"[cover letter] generated via {provider}")
 
     salutation = _build_salutation(job.company, language)
+    from config.settings import settings
+    name = settings.apply_from_name or "Your Name"
     sign_off = (
-        "\n\nMit freundlichen Grüßen,\nYudong (Leo) Zhong"
+        f"\n\nMit freundlichen Grüßen,\n{name}"
         if language == "de"
-        else "\n\nBest regards,\nYudong (Leo) Zhong"
+        else f"\n\nBest regards,\n{name}"
     )
     return f"{salutation}\n\n{body}{sign_off}"
 
