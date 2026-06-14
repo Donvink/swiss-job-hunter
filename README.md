@@ -10,7 +10,7 @@
 
 [Features](#features) · [Quick Start](#quick-start) · [UI](#ui) · [Multi-Direction](#multi-direction-search) · [Architecture](#architecture)
 
-![Swiss Job Hunter UI](docs/screenshot.png)
+![Swiss Job Hunter — Job Board](docs/screenshot_main.png)
 
 </div>
 
@@ -168,6 +168,16 @@ The pipeline button is protected against double-clicks — a second click while 
 - **TAILOR** — missing keywords (chips) + per-bullet rewrite suggestions (original → improved + reason); **REGENERATE** reruns the analysis
 
 **TRACKER** — Kanban board across all application stages
+
+### Screenshots
+
+| Job Board | Job Detail & CV Tailoring |
+|---|---|
+| ![Board](docs/screenshot_main.png) | ![Detail](docs/screenshot_detail.png) |
+
+| CV Tailoring — ATS Suggestions | Application Tracker |
+|---|---|
+| ![Tailor](docs/screenshot_tailor.png) | ![Tracker](docs/screenshot_tracker.png) |
 
 ---
 
