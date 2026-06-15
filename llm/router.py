@@ -1,7 +1,7 @@
 """
-LLM provider router — round-robin between Anthropic, DeepSeek, and OpenRouter.
+LLM provider router — round-robin between Anthropic, DeepSeek, OpenRouter, and Ollama.
 
-DeepSeek and OpenRouter are OpenAI-compatible, so we use the openai SDK for both.
+DeepSeek, OpenRouter, and Ollama are OpenAI-compatible, so we use the openai SDK for all three.
 Anthropic uses its own SDK.
 
 Usage:
@@ -19,7 +19,7 @@ import asyncio
 import itertools
 from typing import Optional
 
-LLM_TIMEOUT = 60  # seconds; hung API calls are cancelled and re-raise TimeoutError
+LLM_TIMEOUT = 120  # seconds; hung API calls are cancelled and re-raise TimeoutError
 
 from config.settings import settings
 
@@ -36,6 +36,8 @@ def _build_cycle() -> itertools.cycle:
         return itertools.cycle(["deepseek"])
     if settings.llm_provider == "openrouter":
         return itertools.cycle(["openrouter"])
+    if settings.llm_provider == "ollama":
+        return itertools.cycle(["ollama"])
 
     # "auto" — include only providers that have a key set
     available: list[str] = []
@@ -45,11 +47,13 @@ def _build_cycle() -> itertools.cycle:
         available.append("deepseek")
     if settings.openrouter_api_key:
         available.append("openrouter")
+    if settings.ollama_base_url:
+        available.append("ollama")
 
     if not available:
         raise RuntimeError(
             "No LLM provider configured. Set ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, "
-            "or OPENROUTER_API_KEY."
+            "OPENROUTER_API_KEY, or OLLAMA_BASE_URL."
         )
 
     return itertools.cycle(available)
@@ -122,6 +126,30 @@ async def _call_openrouter(system: str, user: str, max_tokens: int) -> str:
     return (response.choices[0].message.content or "").strip()
 
 
+# ── Ollama call (OpenAI-compatible) ───────────────────────────────────────────
+
+async def _call_ollama(system: str, user: str, max_tokens: int) -> str:
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(
+        api_key="ollama",  # Ollama ignores the key but the SDK requires a non-empty string
+        base_url=settings.ollama_base_url,
+    )
+    response = await client.chat.completions.create(
+        model=settings.ollama_model,
+        #max_tokens=max_tokens, <- I disable max_tokens because I had problems with it.
+        reasoning_effort="high" if settings.ollama_think else "none",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    )
+
+    print(f"{response.choices[0].message}")
+
+    return (response.choices[0].message.content or "").strip()
+
+
 # ── Public interface ───────────────────────────────────────────────────────────
 
 async def call_llm(
@@ -144,6 +172,8 @@ async def call_llm(
         coro = _call_deepseek(system, user, max_tokens)
     elif p == "openrouter":
         coro = _call_openrouter(system, user, max_tokens)
+    elif p == "ollama":
+        coro = _call_ollama(system, user, max_tokens)
     else:
         raise ValueError(f"Unknown provider: {p}")
 

@@ -62,13 +62,27 @@ Swiss Job Hunter automates the boring parts:
 - Python 3.11+
 - Node.js 18+
 - At least one LLM API key: [Anthropic](https://console.anthropic.com), [DeepSeek](https://platform.deepseek.com), or [OpenRouter](https://openrouter.ai/keys)
+- Or use Ollama!
 
 ### 1. Clone & install
+
 
 ```bash
 git clone https://github.com/Donvink/swiss-job-hunter.git
 cd swiss-job-hunter
+```
 
+I recommend installing python 3.12.
+This step is optionnal
+
+```bash
+Install pyenv and python 3.12
+~/.pyenv/versions/3.12.8/bin/python -m venv .venv
+source .venv/bin/activate
+```
+
+Now install all requirements.
+```bash
 pip install -r requirements.txt
 playwright install chromium
 
@@ -88,12 +102,14 @@ ANTHROPIC_API_KEY=sk-ant-...   # Claude (cover letters, LLM scoring, company loo
 DEEPSEEK_API_KEY=sk-...        # DeepSeek — cheaper alternative
 OPENROUTER_API_KEY=sk-or-...   # OpenRouter — access 100+ models via one key
 OPENROUTER_MODEL=openai/gpt-4o-mini  # any model slug from openrouter.ai/models
-LLM_PROVIDER=auto              # auto | anthropic | deepseek | openrouter
+OLLAMA_BASE_URL=http://localhost:11434/v1
+OLLAMA_MODEL=qwen3.6:latest
+LLM_PROVIDER=auto              # auto | anthropic | deepseek | openrouter | ollama
 ```
 
 > **LLM routing** — `auto` round-robins between every provider whose key is set.
 > Pin to a single provider with `LLM_PROVIDER=openrouter` (or `anthropic` / `deepseek`).
-> Only one key is required; all three can coexist.
+> Only one key is required; all four can coexist.
 
 ### 3. Add your CV
 
@@ -102,7 +118,8 @@ Each file defines a search direction; the backend auto-detects them at startup.
 
 ```bash
 # Single direction
-cp your_cv.txt data/cv_agent.txt
+# Tip: Use the .md format for your CV if you want to make it effective.
+cp your_cv.txt data/cv.txt
 
 # Multiple directions (different roles → different CVs)
 cp your_agent_cv.txt      data/cv_agent.txt
@@ -115,9 +132,11 @@ The `data/cv.txt` file is used as a fallback when no direction is specified.
 
 ```bash
 # Terminal 1 — backend
+source .venv/bin/activate
 python server.py
 
 # Terminal 2 — frontend
+source .venv/bin/activate
 cd ui && npm run dev
 ```
 

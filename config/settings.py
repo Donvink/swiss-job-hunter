@@ -32,12 +32,18 @@ class Settings(BaseSettings):
     openrouter_model: str = "openai/gpt-4o-mini"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
+    # ── Ollama ─────────────────────────────────────────────────────────────────
+    ollama_base_url: str = "http://localhost:11434/v1"
+    ollama_model: str = "qwen3.6:latest"
+    ollama_think: bool = False
+
     # ── LLM routing ────────────────────────────────────────────────────────────
     # "auto"        → round-robin between all configured providers
     # "anthropic"   → always use Anthropic
     # "deepseek"    → always use DeepSeek
     # "openrouter"  → always use OpenRouter
-    llm_provider: Literal["auto", "anthropic", "deepseek", "openrouter"] = "auto"
+    # "ollama"      → always use Ollama (local, no API key required)
+    llm_provider: Literal["auto", "anthropic", "deepseek", "openrouter", "ollama"] = "auto"
 
     # ── Database ───────────────────────────────────────────────────────────────
     database_url: str = "sqlite:///./data/jobs.db"
@@ -84,11 +90,13 @@ class Settings(BaseSettings):
     schedule_cron: str = "0 8 * * 1-5"
 
     @model_validator(mode="after")
-    def check_at_least_one_llm_key(self) -> "Settings":
-        if not self.anthropic_api_key and not self.deepseek_api_key and not self.openrouter_api_key:
+    def check_at_least_one_llm(self) -> "Settings":
+        has_cloud = self.anthropic_api_key or self.deepseek_api_key or self.openrouter_api_key
+        has_local = bool(self.ollama_base_url)
+        if not has_cloud and not has_local:
             raise ValueError(
-                "At least one LLM API key is required: "
-                "set ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, or OPENROUTER_API_KEY in .env"
+                "At least one LLM provider is required: set ANTHROPIC_API_KEY, "
+                "DEEPSEEK_API_KEY, OPENROUTER_API_KEY, or OLLAMA_BASE_URL in .env"
             )
         return self
 
