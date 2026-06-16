@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
     # ── Ollama ─────────────────────────────────────────────────────────────────
-    ollama_base_url: str = "http://localhost:11434/v1"
+    ollama_base_url: str = ""
     ollama_model: str = "qwen3.6:latest"
     ollama_think: bool = False
 

@@ -66,23 +66,10 @@ Swiss Job Hunter automates the boring parts:
 
 ### 1. Clone & install
 
-
 ```bash
 git clone https://github.com/Donvink/swiss-job-hunter.git
 cd swiss-job-hunter
-```
 
-I recommend installing python 3.12.
-This step is optionnal
-
-```bash
-Install pyenv and python 3.12
-~/.pyenv/versions/3.12.8/bin/python -m venv .venv
-source .venv/bin/activate
-```
-
-Now install all requirements.
-```bash
 pip install -r requirements.txt
 playwright install chromium
 
@@ -118,8 +105,7 @@ Each file defines a search direction; the backend auto-detects them at startup.
 
 ```bash
 # Single direction
-# Tip: Use the .md format for your CV if you want to make it effective.
-cp your_cv.txt data/cv.txt
+cp your_cv.txt data/cv_agent.txt
 
 # Multiple directions (different roles → different CVs)
 cp your_agent_cv.txt      data/cv_agent.txt
@@ -132,11 +118,9 @@ The `data/cv.txt` file is used as a fallback when no direction is specified.
 
 ```bash
 # Terminal 1 — backend
-source .venv/bin/activate
 python server.py
 
 # Terminal 2 — frontend
-source .venv/bin/activate
 cd ui && npm run dev
 ```
 

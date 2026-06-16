@@ -137,15 +137,13 @@ async def _call_ollama(system: str, user: str, max_tokens: int) -> str:
     )
     response = await client.chat.completions.create(
         model=settings.ollama_model,
-        #max_tokens=max_tokens, <- I disable max_tokens because I had problems with it.
+        max_tokens=max_tokens,
         reasoning_effort="high" if settings.ollama_think else "none",
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
     )
-
-    print(f"{response.choices[0].message}")
 
     return (response.choices[0].message.content or "").strip()
 
