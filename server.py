@@ -54,6 +54,7 @@ def get_config():
     return {
         "default_keyword": s.default_keyword,
         "default_location": s.default_location,
+        "keyword_presets": s.keyword_presets,
     }
 
 

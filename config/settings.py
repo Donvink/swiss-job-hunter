@@ -3,10 +3,11 @@ Central configuration — loaded from .env / environment variables.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +48,37 @@ class Settings(BaseSettings):
     default_location: str = "Zürich"
     default_language: Literal["en", "de", "fr"] = "en"
     search_radius_km: int = 30
+
+    # ── Keyword presets ────────────────────────────────────────────────────────
+    # JSON object mapping preset name → list of keywords.
+    # Example in .env:
+    #   KEYWORD_PRESETS={"agent": ["AI engineer", "LLM engineer"], "devops": ["DevOps engineer", "SRE"]}
+    keyword_presets: dict[str, list[str]] = Field(
+        default={
+            "perception": [
+                "computer vision engineer", "ADAS engineer", "sensor fusion engineer",
+                "autonomous driving engineer", "robotics engineer", "perception engineer",
+                "SLAM engineer", "robot perception engineer", "motion planning engineer",
+                "autonomous systems engineer", "robotics software engineer",
+            ],
+            "agent": [
+                "machine learning engineer", "AI engineer", "deep learning engineer",
+                "LLM Application Engineer", "agentic AI", "GenAI engineer",
+                "MLOps engineer", "AI software engineer", "applied scientist",
+            ],
+        },
+        description="Keyword presets as JSON: {preset_name: [keyword, ...]}",
+    )
+
+    @field_validator("keyword_presets", mode="before")
+    @classmethod
+    def parse_keyword_presets(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"KEYWORD_PRESETS is not valid JSON: {e}") from e
+        return v
 
     # ── Dedup ──────────────────────────────────────────────────────────────────
     semantic_similarity_threshold: float = 0.92

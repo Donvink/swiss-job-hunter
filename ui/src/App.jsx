@@ -36,10 +36,7 @@ const SOURCES = ["jobs.ch","jobscout24.ch","swissdevjobs.ch","jobup.ch","züri.j
 
 const DIRECTIONS_FALLBACK = ["agent", "perception"];
 
-const KEYWORD_PRESETS = {
-  perception: ["computer vision engineer", "ADAS engineer", "sensor fusion engineer", "autonomous driving engineer", "robotics engineer", "perception engineer", "SLAM engineer", "robot perception engineer", "motion planning engineer", "autonomous systems engineer", "robotics software engineer"],
-  agent:      ["machine learning engineer", "AI engineer", "deep learning engineer", "LLM Application Engineer", "agentic AI", "GenAI engineer", "MLOps engineer", "AI software engineer", "applied scientist"],
-};
+const [keywordPresets, setKeywordPresets] = useState({});
 
 const APPLY_METHODS = [
   { id: "email",    label: "Email",    icon: "📧" },
@@ -505,6 +502,9 @@ export default function App() {
       if (!cfg) return;
       setSearchKws([cfg.default_keyword || "Agent"]);
       setSearchLoc(cfg.default_location || "Zürich");
+      if (cfg.keyword_presets && typeof cfg.keyword_presets === "object") {
+        setKeywordPresets(cfg.keyword_presets);
+      }
     }).catch(()=>{});
     fetch(`${API}/directions`).then(r=>r.ok?r.json():null).then(dirs=>{
       if (dirs && dirs.length) setDirections(dirs);
