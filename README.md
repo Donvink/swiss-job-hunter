@@ -128,6 +128,36 @@ Open **http://localhost:5173**
 
 ---
 
+## Docker
+
+Bring up the whole stack (backend API + static frontend) with one command — no local Python, Node, or Playwright setup required.
+
+```bash
+# 1. Configure: copy the template and add at least one LLM key
+cp .env.example .env
+#    edit .env → set ANTHROPIC_API_KEY / DEEPSEEK_API_KEY / OPENROUTER_API_KEY
+
+# 2. Add your CV (the data/ directory is bind-mounted into the backend)
+cp your_cv.txt data/cv.txt
+
+# 3. Build and start
+docker compose up -d --build
+```
+
+- **UI** → http://localhost:5173
+- **API** → http://localhost:8765
+
+The compose stack runs both the backend and the frontend with one command.
+
+```bash
+docker compose logs -f backend   # follow backend logs
+docker compose down              # stop (data and model cache persist)
+```
+
+**Remote deploys.** The browser calls the backend directly, so the API base URL is baked into the frontend bundle at build time. It defaults to `http://localhost:8765`; for a remote host set `VITE_API_BASE_URL` in `.env` (e.g. `VITE_API_BASE_URL=https://your-tailscale-ip:8765`) and rebuild the frontend image. This is useful if you want to run this on a always on server and access it over tailscale for example.
+
+---
+
 ## UI
 
 The sidebar guides you through the full pipeline:

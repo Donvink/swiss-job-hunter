@@ -1,0 +1,8 @@
+# Rebuilt inside the image — never copy from the host.
+node_modules
+dist
+
+# Docker / editor
+Dockerfile
+.dockerignore
+.DS_Store

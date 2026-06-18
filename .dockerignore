@@ -1,0 +1,33 @@
+# Version control / tooling
+.git
+.gitignore
+.github
+
+# Local secrets and writable state (mounted at runtime, never baked in)
+.env
+.env.*
+data/
+
+# Python
+.venv
+venv
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+uv.lock
+
+# Frontend build artifacts (rebuilt inside the image)
+ui/node_modules
+ui/dist
+
+# Docs / editor
+docs/
+*.md
+.vscode/
+.idea/
+.DS_Store

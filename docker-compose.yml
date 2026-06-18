@@ -1,0 +1,44 @@
+# Swiss Job Hunter — full stack (backend API + static frontend).
+#
+#   cp .env.example .env   # add at least one LLM key
+#   place your CV at data/cv.txt
+#   docker compose up -d --build
+#
+# UI:  http://localhost:5173   API: http://localhost:8765
+
+services:
+  backend:
+    build: .
+    image: swiss-job-hunter-backend
+    env_file: .env
+    ports:
+      - "8765:8765"
+    volumes:
+      # Bind mount: drop cv.txt in from the host, keep the SQLite DB on disk.
+      - ./data:/app/data
+      # Named volume: cache the MiniLM embedding model across recreations.
+      - hf-cache:/app/.cache/huggingface
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8765/config"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      # Allow time for the embedding model to download on first boot.
+      start_period: 120s
+
+  frontend:
+    build:
+      context: ./ui
+      args:
+        # Override for remote deploys; defaults to the published backend port.
+        VITE_API_BASE_URL: "${VITE_API_BASE_URL:-http://localhost:8765}"
+    image: swiss-job-hunter-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  hf-cache: {}

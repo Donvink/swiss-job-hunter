@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
-const API = "http://localhost:8765";
+const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8765";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
