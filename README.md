@@ -31,6 +31,14 @@ Swiss Job Hunter automates the boring parts:
 
 ---
 
+## Roadmap & Feedback
+
+A hosted version (no Docker, no API keys) is in the works — expanding to more European job boards.
+
+👉 **[2-min survey — help shape what gets built](https://eurojobhunter.com)**
+
+---
+
 ## Features
 
 | | Feature |
