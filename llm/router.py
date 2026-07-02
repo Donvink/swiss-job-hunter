@@ -17,7 +17,14 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import logging
 from typing import Optional
+
+log = logging.getLogger(__name__)
+
+_RETRYABLE_HTTP_CODES = {429, 500, 503, 529}
+_MAX_RETRIES = 4
+_RETRY_BASE_DELAY = 2.0  # seconds; doubles each attempt
 
 LLM_TIMEOUT = 120  # seconds; hung API calls are cancelled and re-raise TimeoutError
 
@@ -175,5 +182,29 @@ async def call_llm(
     else:
         raise ValueError(f"Unknown provider: {p}")
 
-    text = await asyncio.wait_for(coro, timeout=LLM_TIMEOUT)
-    return text, p
+    last_exc: Exception | None = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            text = await asyncio.wait_for(coro, timeout=LLM_TIMEOUT)
+            return text, p
+        except Exception as exc:
+            status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+            if status in _RETRYABLE_HTTP_CODES:
+                delay = _RETRY_BASE_DELAY * (2 ** attempt)
+                log.warning("LLM %s %s (attempt %d/%d), retrying in %.0fs",
+                            p, status, attempt + 1, _MAX_RETRIES, delay)
+                last_exc = exc
+                if attempt < _MAX_RETRIES - 1:
+                    await asyncio.sleep(delay)
+                    # rebuild coroutine for next attempt
+                    if p == "anthropic":
+                        coro = _call_anthropic(system, user, max_tokens)
+                    elif p == "deepseek":
+                        coro = _call_deepseek(system, user, max_tokens)
+                    elif p == "openrouter":
+                        coro = _call_openrouter(system, user, max_tokens)
+                    elif p == "ollama":
+                        coro = _call_ollama(system, user, max_tokens)
+                continue
+            raise
+    raise last_exc  # type: ignore[misc]
