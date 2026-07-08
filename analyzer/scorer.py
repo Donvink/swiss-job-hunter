@@ -287,7 +287,7 @@ async def llm_score(cv_text: str, job_title: str, jd_text: str) -> MatchResult:
 
     system = (
         "You are an expert technical recruiter evaluating a candidate for a job in Switzerland. "
-        "The candidate is a Senior ML/Perception Engineer specializing in autonomous driving. "
+        f"{settings.candidate_persona} "
         "Respond only with valid JSON."
     )
     user = f"""Evaluate this candidate's fit for the job.
