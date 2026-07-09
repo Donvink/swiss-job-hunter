@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     default_language: Literal["en", "de", "fr"] = "en"
     search_radius_km: int = 30
 
+    # ── Scoring ────────────────────────────────────────────────────────────────
+    # Sentence describing the candidate's profile, fed to the LLM scoring prompt.
+    candidate_persona: str = (
+        "The candidate is a Senior ML/Perception Engineer specializing in autonomous driving."
+    )
+
     # ── Keyword presets ────────────────────────────────────────────────────────
     # JSON object mapping preset name → list of keywords.
     # Example in .env:
