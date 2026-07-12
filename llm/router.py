@@ -86,7 +86,12 @@ async def _call_anthropic(system: str, user: str, max_tokens: int) -> str:
         system=system,
         messages=messages,
     )
-    return response.content[0].text.strip()
+    # Models with adaptive/extended thinking on by default (e.g. Claude Sonnet
+    # 5) prepend a ThinkingBlock to response.content, which has no .text
+    # attribute — filter to the actual text block(s) instead of assuming
+    # content[0] is text.
+    text_blocks = [block.text for block in response.content if block.type == "text"]
+    return "".join(text_blocks).strip()
 
 
 # ── DeepSeek call (OpenAI-compatible) ─────────────────────────────────────────
