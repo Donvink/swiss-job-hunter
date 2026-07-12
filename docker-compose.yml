@@ -38,6 +38,10 @@ services:
         # Override for remote deploys; defaults to the published backend port.
         VITE_API_BASE_URL: "${VITE_API_BASE_URL:-http://localhost:8765}"
     image: swiss-job-hunter-frontend
+    environment:
+      # Read at container startup (see ui/docker-entrypoint.sh), so this also
+      # works when using the pre-built GHCR image — no rebuild required.
+      VITE_API_BASE_URL: "${VITE_API_BASE_URL:-http://localhost:8765}"
     ports:
       - "5173:80"
     depends_on:

@@ -178,7 +178,7 @@ docker compose logs -f backend   # follow backend logs
 docker compose down              # stop (data and model cache persist)
 ```
 
-**Remote deploys.** The browser calls the backend directly, so the API base URL is baked into the frontend bundle at build time. It defaults to `http://localhost:8765`; for a remote host set `VITE_API_BASE_URL` in `.env` (e.g. `VITE_API_BASE_URL=https://your-tailscale-ip:8765`) and rebuild the frontend image. This is useful if you want to run this on a always on server and access it over tailscale for example.
+**Remote deploys.** The browser calls the backend directly, so the frontend container needs to know the backend's real address. Set `VITE_API_BASE_URL` in `.env` (e.g. `VITE_API_BASE_URL=https://your-tailscale-ip:8765`) — the container reads it at **startup**, so this works whether you build locally or pull the pre-built image from GHCR; no rebuild required. It defaults to `http://localhost:8765`. This is useful if you want to run this on an always-on server (e.g. a NAS) and access it over Tailscale or your LAN.
 
 ---
 
