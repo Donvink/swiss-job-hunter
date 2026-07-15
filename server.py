@@ -209,7 +209,7 @@ async def sse(gen: AsyncGenerator[str, None]) -> StreamingResponse:
                 safe = line.replace("\n", " ")
                 yield f"data: {safe}\n\n"
         except Exception as e:
-            yield f"data: ✗ Internal error: {str(e)[:200]}\n\n"
+            yield f"data: ✗ Internal error: {str(e)[:400]}\n\n"
         finally:
             yield "data: [DONE]\n\n"
     return StreamingResponse(

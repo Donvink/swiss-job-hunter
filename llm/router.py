@@ -162,6 +162,19 @@ async def _call_ollama(system: str, user: str, max_tokens: int) -> str:
 
 # ── Public interface ───────────────────────────────────────────────────────────
 
+def _provider_endpoint(p: str) -> str:
+    """Best-effort endpoint URL for a provider, for error messages."""
+    if p == "anthropic":
+        return "https://api.anthropic.com"
+    if p == "deepseek":
+        return settings.deepseek_base_url
+    if p == "openrouter":
+        return settings.openrouter_base_url
+    if p == "ollama":
+        return settings.ollama_base_url or "(OLLAMA_BASE_URL not set)"
+    return "?"
+
+
 async def call_llm(
     user: str,
     system: str = "You are a helpful assistant.",
@@ -211,5 +224,5 @@ async def call_llm(
                     elif p == "ollama":
                         coro = _call_ollama(system, user, max_tokens)
                 continue
-            raise
-    raise last_exc  # type: ignore[misc]
+            raise RuntimeError(f"[{p} @ {_provider_endpoint(p)}] {exc}") from exc
+    raise RuntimeError(f"[{p} @ {_provider_endpoint(p)}] {last_exc}") from last_exc
