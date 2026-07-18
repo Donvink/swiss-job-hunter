@@ -58,7 +58,7 @@ All scope and design decisions were confirmed directly with the user before plan
 - [x] Phase 10 — JobInterviewsTab (rounds + retrospective + questions + AI-optimize)
 - [x] Phase 11 — Resume Versions UI
 - [x] Phase 12 — STAR Story Library UI
-- [ ] Phase 13 — Verification pass
+- [x] Phase 13 — Verification pass
 
 When starting a phase in a new session: mark it done here (`[x]`) only after its verification steps pass and the work is committed. Each phase should end with a git commit on `feature/interview-tracking` referencing the phase number/title, so later sessions can `git log`/`git diff` to see exactly what's landed instead of relying on this checklist alone.
 
