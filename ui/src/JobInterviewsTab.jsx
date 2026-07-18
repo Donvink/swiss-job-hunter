@@ -239,6 +239,45 @@ function AddQuestionForm({ interviewId, onDone, onCancel }) {
   );
 }
 
+// ── Bulk-import questions form ───────────────────────────────────────────────
+
+function BulkImportForm({ interviewId, onDone, onCancel }) {
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const lines = text.split("\n").map(l=>l.trim()).filter(Boolean);
+
+  const submit = async () => {
+    if (lines.length===0) return;
+    setLoading(true);
+    try {
+      for (const question of lines) {
+        await fetch(`${API}/interviews/${interviewId}/questions`, {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ question }),
+        });
+      }
+      onDone();
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{background:"#e8e3d8",border:"1px solid #c8c2b4",borderRadius:6,padding:10,marginBottom:8}}>
+      <textarea value={text} onChange={e=>setText(e.target.value)}
+        placeholder="Paste your prepared questions, one per line..."
+        style={{...inp,minHeight:100,resize:"vertical",marginBottom:8,fontFamily:"inherit",fontSize:10}}/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontSize:9,color:"#8a8278"}}>{lines.length} question{lines.length===1?"":"s"} detected</span>
+        <div style={{display:"flex",gap:6}}>
+          <ActionBtn onClick={onCancel} label="Cancel" icon="✕" color="#8a8278" small/>
+          <ActionBtn onClick={submit} loading={loading} disabled={lines.length===0}
+            label={`Import ${lines.length||""}`} icon="+" color="#4d7ab5" small/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Round card ────────────────────────────────────────────────────────────────
 
 function RoundCard({ interview, expanded, onToggle, onChanged, onDeleted }) {
@@ -247,6 +286,7 @@ function RoundCard({ interview, expanded, onToggle, onChanged, onDeleted }) {
   const [notes, setNotes] = useState(interview.notes || "");
   const [savingRetro, setSavingRetro] = useState(false);
   const [addingQuestion, setAddingQuestion] = useState(false);
+  const [bulkImporting, setBulkImporting] = useState(false);
 
   useEffect(() => {
     setWentWell(interview.went_well || "");
@@ -348,11 +388,23 @@ function RoundCard({ interview, expanded, onToggle, onChanged, onDeleted }) {
           <div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
               <div style={{fontSize:9,color:"#8a8278",letterSpacing:"0.1em",fontWeight:700}}>QUESTIONS</div>
-              <button onClick={()=>setAddingQuestion(p=>!p)} style={{
-                fontSize:9,padding:"3px 9px",borderRadius:3,border:"1px solid #4d7ab550",
-                background:"#4d7ab510",color:"#4d7ab5",cursor:"pointer",fontFamily:"monospace",fontWeight:700,
-              }}>+ ADD QUESTION</button>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>{ setBulkImporting(p=>!p); setAddingQuestion(false); }} style={{
+                  fontSize:9,padding:"3px 9px",borderRadius:3,border:"1px solid #4d7ab550",
+                  background:"#4d7ab510",color:"#4d7ab5",cursor:"pointer",fontFamily:"monospace",fontWeight:700,
+                }}>+ BULK IMPORT</button>
+                <button onClick={()=>{ setAddingQuestion(p=>!p); setBulkImporting(false); }} style={{
+                  fontSize:9,padding:"3px 9px",borderRadius:3,border:"1px solid #4d7ab550",
+                  background:"#4d7ab510",color:"#4d7ab5",cursor:"pointer",fontFamily:"monospace",fontWeight:700,
+                }}>+ ADD QUESTION</button>
+              </div>
             </div>
+
+            {bulkImporting && (
+              <BulkImportForm interviewId={interview.id}
+                onDone={()=>{ setBulkImporting(false); onChanged(); }}
+                onCancel={()=>setBulkImporting(false)}/>
+            )}
 
             {addingQuestion && (
               <AddQuestionForm interviewId={interview.id}
