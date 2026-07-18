@@ -15,6 +15,9 @@ from pathlib import Path
 from typing import Optional
 
 from config.settings import settings
+from db.models import ResumeVersion
+from db.session import get_session
+from llm.json_repair import parse_llm_json
 
 # ── Skill keywords grouped by category ────────────────────────────────────────
 # Each tuple: (pattern, weight)
@@ -308,34 +311,12 @@ Return ONLY valid JSON (no markdown):
 
     raw, provider = await call_llm(user=user, system=system, max_tokens=1024)
 
-    # Strip markdown fences
-    raw = re.sub(r"^```[a-z]*\n?", "", raw.strip())
-    raw = re.sub(r"\n?```$", "", raw)
-
-    # Extract JSON object even if there's surrounding text
-    m = re.search(r'\{.*\}', raw, re.DOTALL)
-    if not m:
-        return MatchResult(
-            score=0.0, matched_skills=[], missing_skills=[],
-            explanation=f"LLM returned unparseable response: {raw[:100]}",
-            provider=provider,
-        )
-
-    # Clean common JSON issues: smart quotes, unescaped newlines in strings
-    json_str = m.group(0)
-    json_str = json_str.replace('\u201c', '"').replace('\u201d', '"')
-    json_str = json_str.replace('\u2018', "'").replace('\u2019', "'")
-    # Remove literal newlines inside string values
-    json_str = re.sub(r'(?<=:)\s*"([^"]*?)\n([^"]*?)"', 
-                      lambda x: ': "' + x.group(1) + ' ' + x.group(2) + '"', 
-                      json_str)
-
     try:
-        data = json.loads(json_str)
+        data = parse_llm_json(raw)
     except json.JSONDecodeError:
         # Last resort: extract fields with regex
-        score_m = re.search(r'"score"\s*:\s*([0-9.]+)', json_str)
-        expl_m  = re.search(r'"explanation"\s*:\s*"([^"]{10,})"', json_str)
+        score_m = re.search(r'"score"\s*:\s*([0-9.]+)', raw)
+        expl_m  = re.search(r'"explanation"\s*:\s*"([^"]{10,})"', raw)
         return MatchResult(
             score=float(score_m.group(1)) if score_m else 0.0,
             matched_skills=[],
@@ -352,12 +333,26 @@ Return ONLY valid JSON (no markdown):
     )
 
 
-def load_cv_text(path: Optional[Path] = None, direction: Optional[str] = None) -> str:
+def load_cv_text(direction: Optional[str] = None) -> str:
+    """
+    Load CV text for a direction (or the direction-less default).
+    Queries the active ResumeVersion first; falls back to the legacy flat file
+    (data/cv_{direction}.txt or data/cv.txt) if the DB hasn't been seeded yet.
+    """
+    with get_session() as session:
+        version = (
+            session.query(ResumeVersion)
+            .filter(ResumeVersion.direction == direction, ResumeVersion.is_active.is_(True))
+            .first()
+        )
+        if version:
+            return version.extracted_text
+
     if direction:
         candidate = Path(f"./data/cv_{direction}.txt")
         if candidate.exists():
             return candidate.read_text(encoding="utf-8")
-    p = path or settings.cv_text_path
+    p = settings.cv_text_path
     if not p.exists():
         raise FileNotFoundError(
             f"CV text not found at {p}. "

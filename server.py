@@ -35,6 +35,14 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def on_startup():
+    from db.seed import seed_resume_versions_from_flat_files
+    from db.session import init_db
+    init_db()
+    seed_resume_versions_from_flat_files()
+
+
 @app.get("/directions")
 def get_directions():
     import glob

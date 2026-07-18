@@ -8,6 +8,7 @@ import json
 import re
 
 from db.models import Job
+from llm.json_repair import parse_llm_json
 from llm.router import call_llm
 
 # Section headers that signal the start of requirements content
@@ -120,20 +121,7 @@ Rules:
     raw, provider = await call_llm(user=user, system=system, max_tokens=2500)
     print(f"[cv_tailor] generated via {provider}")
 
-    raw = re.sub(r"^```[a-z]*\n?", "", raw.strip())
-    raw = re.sub(r"\n?```$", "", raw)
-    m = re.search(r"\{.*\}", raw, re.DOTALL)
-    if not m:
-        return {"error": f"LLM returned unparseable response: {raw[:200]}"}
     try:
-        return json.loads(m.group(0))
+        return parse_llm_json(raw)
     except json.JSONDecodeError as e:
-        # Response was likely truncated — try closing open structures
-        fixed = m.group(0).rstrip().rstrip(",")
-        open_brackets = fixed.count("[") - fixed.count("]")
-        open_braces = fixed.count("{") - fixed.count("}")
-        fixed += "]" * max(0, open_brackets) + "}" * max(0, open_braces)
-        try:
-            return json.loads(fixed)
-        except json.JSONDecodeError:
-            return {"error": f"JSON parse error: {e}", "raw": raw[:500]}
+        return {"error": f"JSON parse error: {e}", "raw": raw[:500]}
