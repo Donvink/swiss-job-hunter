@@ -15,9 +15,9 @@ from typing import AsyncGenerator, Optional
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func
 
@@ -1211,3 +1211,156 @@ def get_tracker():
                 "notes": app.notes if app else None,
             })
     return result
+
+
+# ── Resume version endpoints ────────────────────────────────────────────────────
+
+_RESUME_EXT_FORMAT = {".pdf": "pdf", ".docx": "docx", ".txt": "txt"}
+
+
+def _resume_version_dict(v, include_text: bool = False) -> dict:
+    d = {
+        "id": v.id,
+        "direction": v.direction,
+        "label": v.label,
+        "original_filename": v.original_filename,
+        "file_format": v.file_format,
+        "changelog": v.changelog,
+        "is_active": v.is_active,
+        "uploaded_at": v.uploaded_at.isoformat(),
+    }
+    if include_text:
+        d["extracted_text"] = v.extracted_text
+    return d
+
+
+@app.get("/resume-versions")
+def list_resume_versions(direction: Optional[str] = None):
+    from db.session import get_session
+    from db.models import ResumeVersion
+    with get_session() as session:
+        query = session.query(ResumeVersion)
+        if direction is not None:
+            query = query.filter(ResumeVersion.direction == direction)
+        versions = query.order_by(
+            ResumeVersion.direction, ResumeVersion.uploaded_at.desc()
+        ).all()
+        return [_resume_version_dict(v) for v in versions]
+
+
+@app.get("/resume-versions/{version_id}")
+def get_resume_version(version_id: int):
+    from db.session import get_session
+    from db.models import ResumeVersion
+    with get_session() as session:
+        version = session.get(ResumeVersion, version_id)
+        if not version:
+            raise HTTPException(404, "Resume version not found")
+        return _resume_version_dict(version, include_text=True)
+
+
+@app.post("/resume-versions")
+async def upload_resume_version(
+    file: UploadFile = File(...),
+    direction: Optional[str] = Form(None),
+    label: str = Form(...),
+    changelog: Optional[str] = Form(None),
+):
+    from analyzer.resume_extract import extract_text
+    from db.models import FileFormat, ResumeVersion
+    from db.session import get_session
+
+    direction = direction or None
+    ext = Path(file.filename or "").suffix.lower()
+    fmt_value = _RESUME_EXT_FORMAT.get(ext)
+    if not fmt_value:
+        raise HTTPException(400, f"Unsupported file type: {ext or '(none)'}. Use .pdf, .docx, or .txt")
+    file_format = FileFormat(fmt_value)
+
+    file_bytes = await file.read()
+    extracted_text = extract_text(file_bytes, file_format)
+
+    resume_dir = Path("./data/resumes")
+    resume_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = (file.filename or "resume").replace("/", "-").replace("\\", "-")
+    stored_name = f"{int(datetime.utcnow().timestamp() * 1000)}_{safe_name}"
+    file_path = resume_dir / stored_name
+    file_path.write_bytes(file_bytes)
+
+    with get_session() as session:
+        is_first = (
+            session.query(ResumeVersion).filter(ResumeVersion.direction == direction).first()
+            is None
+        )
+        version = ResumeVersion(
+            direction=direction,
+            label=label,
+            original_filename=file.filename or stored_name,
+            file_path=str(file_path),
+            file_format=file_format,
+            extracted_text=extracted_text,
+            changelog=changelog,
+            is_active=is_first,
+            uploaded_at=datetime.utcnow(),
+        )
+        session.add(version)
+        session.flush()
+        result = {"ok": True, "id": version.id, "is_active": version.is_active}
+    return result
+
+
+@app.patch("/resume-versions/{version_id}/activate")
+def activate_resume_version(version_id: int):
+    from db.session import get_session
+    from db.models import ResumeVersion
+    with get_session() as session:
+        version = session.get(ResumeVersion, version_id)
+        if not version:
+            raise HTTPException(404, "Resume version not found")
+        session.query(ResumeVersion).filter(
+            ResumeVersion.direction == version.direction,
+            ResumeVersion.id != version_id,
+        ).update({"is_active": False})
+        version.is_active = True
+    return {"ok": True}
+
+
+@app.delete("/resume-versions/{version_id}")
+def delete_resume_version(version_id: int):
+    from db.session import get_session
+    from db.models import ResumeVersion, Application
+    with get_session() as session:
+        version = session.get(ResumeVersion, version_id)
+        if not version:
+            raise HTTPException(404, "Resume version not found")
+        if version.is_active:
+            raise HTTPException(400, "Cannot delete the active resume version")
+        referenced = session.query(Application).filter(
+            Application.resume_version_id == version_id
+        ).first()
+        if referenced:
+            raise HTTPException(400, "Cannot delete a resume version referenced by an application")
+        file_path = Path(version.file_path)
+        session.delete(version)
+    # Only remove files this endpoint itself owns (uploads under data/resumes/).
+    # Legacy flat-file seeds (data/cv_{direction}.txt) are referenced in-place by
+    # db/seed.py and must never be unlinked by deleting their ResumeVersion row.
+    resume_dir = Path("./data/resumes").resolve()
+    if resume_dir in file_path.resolve().parents and file_path.exists():
+        file_path.unlink()
+    return {"ok": True}
+
+
+@app.get("/resume-versions/{version_id}/download")
+def download_resume_version(version_id: int):
+    from db.session import get_session
+    from db.models import ResumeVersion
+    with get_session() as session:
+        version = session.get(ResumeVersion, version_id)
+        if not version:
+            raise HTTPException(404, "Resume version not found")
+        file_path = version.file_path
+        filename = version.original_filename
+    if not Path(file_path).exists():
+        raise HTTPException(404, "Resume file missing on disk")
+    return FileResponse(file_path, filename=filename)
