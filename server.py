@@ -129,6 +129,35 @@ def list_jobs(status: str = "all", q: str = "", direction: str = "all", min_star
     return get_jobs_query(status, q, direction, min_stars)
 
 
+@app.get("/jobs/{job_id}")
+def get_job(job_id: int):
+    from db.session import get_session
+    from db.models import Job
+    with get_session() as session:
+        job = session.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        return {
+            "id": job.id,
+            "title": job.title,
+            "company": job.company,
+            "location": job.location,
+            "description": job.description,
+            "url": job.url,
+            "source": job.source,
+            "source_job_id": job.source_job_id,
+            "salary_raw": job.salary_raw,
+            "employment_type": job.employment_type,
+            "status": job.status,
+            "match_score": job.match_score,
+            "match_explanation": job.match_explanation,
+            "user_stars": job.user_stars,
+            "direction": job.direction,
+            "posted_at": job.posted_at.isoformat() if job.posted_at else None,
+            "scraped_at": job.scraped_at.isoformat() if job.scraped_at else None,
+        }
+
+
 @app.get("/stats")
 def get_stats(threshold: float = 0.1):
     from db.session import get_session, init_db
@@ -1634,6 +1663,67 @@ async def optimize_question_answer(question_id: int):
             q.optimized_answer = result.get("optimized_answer")
         d = _question_dict(q)
     return {**result, "question": d}
+
+
+# ── Cross-job search + upcoming aggregation ─────────────────────────────────────
+
+@app.get("/interview-questions/search")
+def search_interview_questions(q: str = ""):
+    from db.session import get_session
+    from db.models import InterviewQuestion, Interview, Job
+    from sqlalchemy import or_
+
+    if not q:
+        return []
+
+    with get_session() as session:
+        rows = (
+            session.query(InterviewQuestion, Interview, Job)
+            .join(Interview, InterviewQuestion.interview_id == Interview.id)
+            .join(Job, Interview.job_id == Job.id)
+            .filter(
+                or_(
+                    InterviewQuestion.question.ilike(f"%{q}%"),
+                    InterviewQuestion.my_answer.ilike(f"%{q}%"),
+                )
+            )
+            .order_by(Interview.scheduled_at.desc().nullslast())
+            .limit(100)
+            .all()
+        )
+        result = []
+        for question, interview, job in rows:
+            d = _question_dict(question)
+            d["interview"] = {
+                "id": interview.id,
+                "round_number": interview.round_number,
+                "interview_type": interview.interview_type,
+                "scheduled_at": interview.scheduled_at.isoformat() if interview.scheduled_at else None,
+            }
+            d["job"] = {"id": job.id, "title": job.title, "company": job.company}
+            result.append(d)
+    return result
+
+
+@app.get("/interviews/upcoming")
+def list_upcoming_interviews(include_past: bool = False):
+    from db.session import get_session
+    from db.models import Interview, Job
+    from sqlalchemy import or_
+
+    with get_session() as session:
+        query = session.query(Interview, Job).join(Job, Interview.job_id == Job.id)
+        if not include_past:
+            query = query.filter(
+                or_(Interview.scheduled_at.is_(None), Interview.scheduled_at >= datetime.utcnow())
+            )
+        rows = query.order_by(Interview.scheduled_at.asc().nullslast()).all()
+        result = []
+        for interview, job in rows:
+            d = _interview_dict(interview, include_questions=False)
+            d["job"] = {"id": job.id, "title": job.title, "company": job.company}
+            result.append(d)
+    return result
 
 
 # ── STAR story endpoints ────────────────────────────────────────────────────────
