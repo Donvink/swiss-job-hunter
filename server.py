@@ -164,11 +164,15 @@ def get_stats(threshold: float = 0.1):
 @app.delete("/jobs/{job_id}")
 def delete_job(job_id: int):
     from db.session import get_session
-    from db.models import Job, RawJob, Application, JobEvent
+    from db.models import Job, RawJob, Application, JobEvent, Interview, InterviewQuestion
     with get_session() as session:
         job = session.get(Job, job_id)
         if not job:
             raise HTTPException(404, "Job not found")
+        interview_ids = [iv.id for iv in session.query(Interview).filter(Interview.job_id == job_id).all()]
+        if interview_ids:
+            session.query(InterviewQuestion).filter(InterviewQuestion.interview_id.in_(interview_ids)).delete(synchronize_session=False)
+        session.query(Interview).filter(Interview.job_id == job_id).delete()
         session.query(JobEvent).filter(JobEvent.job_id == job_id).delete()
         session.query(Application).filter(Application.job_id == job_id).delete()
         session.query(RawJob).filter(RawJob.canonical_id == job_id).delete()
@@ -760,7 +764,7 @@ async def run_check_links(req: CheckLinksRequest):
 @app.post("/run/purge-archived")
 async def run_purge_archived(req: PurgeRequest):
     async def gen():
-        from db.models import Job, JobStatus, RawJob, Application, JobEvent
+        from db.models import Job, JobStatus, RawJob, Application, JobEvent, Interview, InterviewQuestion
         from db.session import get_session
 
         # Include NEW/ANALYZED/ARCHIVED — all statuses the user hasn't manually acted on
@@ -789,6 +793,10 @@ async def run_purge_archived(req: PurgeRequest):
                 continue
             try:
                 with get_session() as session:
+                    interview_ids = [iv.id for iv in session.query(Interview).filter(Interview.job_id == job_id).all()]
+                    if interview_ids:
+                        session.query(InterviewQuestion).filter(InterviewQuestion.interview_id.in_(interview_ids)).delete(synchronize_session=False)
+                    session.query(Interview).filter(Interview.job_id == job_id).delete()
                     session.query(JobEvent).filter(JobEvent.job_id == job_id).delete()
                     session.query(Application).filter(Application.job_id == job_id).delete()
                     session.query(RawJob).filter(RawJob.canonical_id == job_id).delete()
@@ -1364,3 +1372,175 @@ def download_resume_version(version_id: int):
     if not Path(file_path).exists():
         raise HTTPException(404, "Resume file missing on disk")
     return FileResponse(file_path, filename=filename)
+
+
+# ── Interview endpoints ──────────────────────────────────────────────────────────
+
+def _interview_dict(iv, include_questions: bool = True) -> dict:
+    d = {
+        "id": iv.id,
+        "job_id": iv.job_id,
+        "round_number": iv.round_number,
+        "interview_type": iv.interview_type,
+        "scheduled_at": iv.scheduled_at.isoformat() if iv.scheduled_at else None,
+        "interviewer_name": iv.interviewer_name,
+        "format": iv.format,
+        "duration_minutes": iv.duration_minutes,
+        "prep_notes": iv.prep_notes,
+        "outcome": iv.outcome,
+        "self_rating": iv.self_rating,
+        "went_well": iv.went_well,
+        "to_improve": iv.to_improve,
+        "notes": iv.notes,
+        "created_at": iv.created_at.isoformat(),
+        "updated_at": iv.updated_at.isoformat(),
+    }
+    if include_questions:
+        d["questions"] = [
+            {
+                "id": q.id,
+                "interview_id": q.interview_id,
+                "question": q.question,
+                "my_answer": q.my_answer,
+                "llm_feedback": q.llm_feedback,
+                "optimized_answer": q.optimized_answer,
+                "order_index": q.order_index,
+            }
+            for q in iv.questions
+        ]
+    return d
+
+
+@app.get("/jobs/{job_id}/interviews")
+def list_interviews(job_id: int):
+    from db.session import get_session
+    from db.models import Interview
+    with get_session() as session:
+        interviews = session.query(Interview).filter(
+            Interview.job_id == job_id
+        ).order_by(Interview.scheduled_at).all()
+        return [_interview_dict(iv) for iv in interviews]
+
+
+@app.post("/jobs/{job_id}/interviews")
+def create_interview(job_id: int, body: dict):
+    from db.session import get_session
+    from db.models import Job, JobStatus, Interview, InterviewType, InterviewFormat
+
+    try:
+        interview_type = InterviewType(body.get("interview_type"))
+    except ValueError:
+        raise HTTPException(400, f"Invalid interview_type: {body.get('interview_type')}")
+
+    interview_format = None
+    format_value = body.get("format")
+    if format_value:
+        try:
+            interview_format = InterviewFormat(format_value)
+        except ValueError:
+            raise HTTPException(400, f"Invalid format: {format_value}")
+
+    scheduled_at = None
+    scheduled_at_str = body.get("scheduled_at")
+    if scheduled_at_str:
+        try:
+            scheduled_at = datetime.fromisoformat(scheduled_at_str)
+        except ValueError:
+            raise HTTPException(400, f"Invalid scheduled_at: {scheduled_at_str}")
+
+    with get_session() as session:
+        job = session.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        job.status = JobStatus.INTERVIEWING
+        interview = Interview(
+            job_id=job_id,
+            round_number=body.get("round_number", 1),
+            interview_type=interview_type,
+            scheduled_at=scheduled_at,
+            interviewer_name=body.get("interviewer_name"),
+            format=interview_format,
+            duration_minutes=body.get("duration_minutes"),
+            prep_notes=body.get("prep_notes"),
+        )
+        session.add(interview)
+        session.flush()
+        result = {"ok": True, "id": interview.id}
+    return result
+
+
+@app.patch("/interviews/{interview_id}")
+def update_interview(interview_id: int, body: dict):
+    from db.session import get_session
+    from db.models import Interview, InterviewType, InterviewFormat, InterviewOutcome, Job, JobStatus
+
+    with get_session() as session:
+        interview = session.get(Interview, interview_id)
+        if not interview:
+            raise HTTPException(404, "Interview not found")
+
+        if "round_number" in body:
+            interview.round_number = body["round_number"]
+        if "interview_type" in body:
+            try:
+                interview.interview_type = InterviewType(body["interview_type"])
+            except ValueError:
+                raise HTTPException(400, f"Invalid interview_type: {body['interview_type']}")
+        if "scheduled_at" in body:
+            scheduled_at_str = body["scheduled_at"]
+            if scheduled_at_str:
+                try:
+                    interview.scheduled_at = datetime.fromisoformat(scheduled_at_str)
+                except ValueError:
+                    raise HTTPException(400, f"Invalid scheduled_at: {scheduled_at_str}")
+            else:
+                interview.scheduled_at = None
+        if "interviewer_name" in body:
+            interview.interviewer_name = body["interviewer_name"]
+        if "format" in body:
+            format_value = body["format"]
+            if format_value:
+                try:
+                    interview.format = InterviewFormat(format_value)
+                except ValueError:
+                    raise HTTPException(400, f"Invalid format: {format_value}")
+            else:
+                interview.format = None
+        if "duration_minutes" in body:
+            interview.duration_minutes = body["duration_minutes"]
+        if "prep_notes" in body:
+            interview.prep_notes = body["prep_notes"]
+        if "self_rating" in body:
+            interview.self_rating = body["self_rating"]
+        if "went_well" in body:
+            interview.went_well = body["went_well"]
+        if "to_improve" in body:
+            interview.to_improve = body["to_improve"]
+        if "notes" in body:
+            interview.notes = body["notes"]
+        if "outcome" in body:
+            try:
+                outcome = InterviewOutcome(body["outcome"])
+            except ValueError:
+                raise HTTPException(400, f"Invalid outcome: {body['outcome']}")
+            interview.outcome = outcome
+            if outcome == InterviewOutcome.FAILED:
+                job = session.get(Job, interview.job_id)
+                if job:
+                    job.status = JobStatus.REJECTED
+    return {"ok": True}
+
+
+@app.delete("/interviews/{interview_id}")
+def delete_interview(interview_id: int):
+    from db.session import get_session
+    from db.models import Interview, InterviewQuestion
+    with get_session() as session:
+        interview = session.get(Interview, interview_id)
+        if not interview:
+            raise HTTPException(404, "Interview not found")
+        session.query(InterviewQuestion).filter(
+            InterviewQuestion.interview_id == interview_id
+        ).delete()
+        session.delete(interview)
+    return {"ok": True}
