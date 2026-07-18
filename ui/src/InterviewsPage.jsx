@@ -2,6 +2,7 @@ import { useState } from "react";
 import UpcomingInterviews from "./UpcomingInterviews.jsx";
 import QuestionSearch from "./QuestionSearch.jsx";
 import ResumeVersions from "./ResumeVersions.jsx";
+import StarStoryLibrary from "./StarStoryLibrary.jsx";
 
 const SUB_TABS = [
   { id: "upcoming", label: "UPCOMING" },
@@ -35,9 +36,7 @@ export default function InterviewsPage({ onSelectJob, addLog }) {
         {interviewSubTab==="upcoming" && <UpcomingInterviews onSelectJob={onSelectJob}/>}
         {interviewSubTab==="search" && <QuestionSearch onSelectJob={onSelectJob}/>}
         {interviewSubTab==="resumes" && <ResumeVersions addLog={addLog}/>}
-        {interviewSubTab==="stories" && (
-          <div style={{color:"#c4beb0",fontSize:12,textAlign:"center",marginTop:50}}>STORIES — coming soon</div>
-        )}
+        {interviewSubTab==="stories" && <StarStoryLibrary addLog={addLog}/>}
       </div>
     </div>
   );
