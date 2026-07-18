@@ -48,7 +48,7 @@ All scope and design decisions were confirmed directly with the user before plan
 - [x] Phase 0 — Alembic + dependencies
 - [x] Phase 1 — DB schema
 - [x] Phase 2 — Core backend refactor
-- [ ] Phase 3 — Resume version backend
+- [x] Phase 3 — Resume version backend
 - [ ] Phase 4 — Interview CRUD backend
 - [ ] Phase 5 — Interview questions + AI-optimize backend
 - [ ] Phase 6 — STAR story CRUD backend
