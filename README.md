@@ -4,15 +4,13 @@
 
 **Automated job search, scoring, and application tracking — built for Switzerland, adaptable to any country**
 
-[![CI](https://github.com/Donvink/swiss-job-hunter/actions/workflows/ci.yml/badge.svg)](https://github.com/Donvink/swiss-job-hunter/actions/workflows/ci.yml)
+[![Hosted](https://img.shields.io/badge/hosted-eurojobhunter.com-2e7d52)](https://eurojobhunter.com)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
-[Features](#features) · [Quick Start](#quick-start) · [UI](#ui) · [Multi-Direction](#multi-direction-search) · [Architecture](#architecture) · [Use it anywhere](#use-it-anywhere)
+[Features](#features) · [Quick Start](#quick-start) · [UI](#ui) · [Multi-Direction](#multi-direction-search) · [Architecture](#architecture) · [Use it anywhere](#use-it-anywhere) · [🚀 Try it hosted, free](https://eurojobhunter.com)
 
 <video src="https://github.com/user-attachments/assets/7931b4e7-3125-4bed-aeba-bbb13644e31e" controls width="100%"></video>
-
-![Swiss Job Hunter — Job Board](docs/screenshot_main.png)
 
 </div>
 
@@ -33,9 +31,18 @@ Swiss Job Hunter automates the boring parts:
 
 ## Roadmap & Feedback
 
-A hosted version (no Docker, no API keys) is in the works — expanding to more European job boards.
+### 🚀 Latest
 
-👉 **[2-min survey — help shape what gets built](https://eurojobhunter.com)**
+- **Jul 2026** — 🚀 **[eurojobhunter.com](https://eurojobhunter.com) is live** — the hosted version of this project, no Docker, no API keys, 100% free to use (scan, score, triage, track, get notified)
+- **Jul 2026** — Guided onboarding, daily automated scans, and Telegram/email alerts the moment a strong match appears
+- **Jun 2026** — Multi-user scheduler and AES-encrypted CV storage shipped, laying the groundwork for the hosted version
+
+### 🔭 What's next
+
+- Richer interview management — resume versioning, interview-stage tracking, and post-interview retrospectives, on top of the existing application tracker
+- More European job boards beyond Switzerland (DACH + EU expansion)
+
+👉 **[Share feedback — help shape what gets built next](https://tally.so/r/0QG5L0)**
 
 ---
 
@@ -51,7 +58,7 @@ To adapt it for your country:
 
 That's it. Contributions of new country scrapers are very welcome — open a PR!
 
-> **Germany?** A hosted version targeting DACH + EU job boards is in the works: [EuroJobHunter](https://eurojobhunter.com)
+> **Germany?** A hosted version targeting DACH + EU job boards is live: [EuroJobHunter](https://eurojobhunter.com)
 
 ---
 
