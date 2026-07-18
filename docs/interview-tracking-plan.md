@@ -56,7 +56,7 @@ All scope and design decisions were confirmed directly with the user before plan
 - [x] Phase 8 — Frontend scaffolding
 - [x] Phase 9 — InterviewsPage (upcoming + search + sub-nav)
 - [x] Phase 10 — JobInterviewsTab (rounds + retrospective + questions + AI-optimize)
-- [ ] Phase 11 — Resume Versions UI
+- [x] Phase 11 — Resume Versions UI
 - [ ] Phase 12 — STAR Story Library UI
 - [ ] Phase 13 — Verification pass
 
