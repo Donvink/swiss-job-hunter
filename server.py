@@ -1396,19 +1396,20 @@ def _interview_dict(iv, include_questions: bool = True) -> dict:
         "updated_at": iv.updated_at.isoformat(),
     }
     if include_questions:
-        d["questions"] = [
-            {
-                "id": q.id,
-                "interview_id": q.interview_id,
-                "question": q.question,
-                "my_answer": q.my_answer,
-                "llm_feedback": q.llm_feedback,
-                "optimized_answer": q.optimized_answer,
-                "order_index": q.order_index,
-            }
-            for q in iv.questions
-        ]
+        d["questions"] = [_question_dict(q) for q in iv.questions]
     return d
+
+
+def _question_dict(q) -> dict:
+    return {
+        "id": q.id,
+        "interview_id": q.interview_id,
+        "question": q.question,
+        "my_answer": q.my_answer,
+        "llm_feedback": q.llm_feedback,
+        "optimized_answer": q.optimized_answer,
+        "order_index": q.order_index,
+    }
 
 
 @app.get("/jobs/{job_id}/interviews")
@@ -1544,3 +1545,92 @@ def delete_interview(interview_id: int):
         ).delete()
         session.delete(interview)
     return {"ok": True}
+
+
+# ── Interview question endpoints ──────────────────────────────────────────────────
+
+@app.post("/interviews/{interview_id}/questions")
+def create_question(interview_id: int, body: dict):
+    from db.session import get_session
+    from db.models import Interview, InterviewQuestion
+
+    question = body.get("question")
+    if not question:
+        raise HTTPException(400, "question is required")
+
+    with get_session() as session:
+        interview = session.get(Interview, interview_id)
+        if not interview:
+            raise HTTPException(404, "Interview not found")
+        next_index = session.query(InterviewQuestion).filter(
+            InterviewQuestion.interview_id == interview_id
+        ).count()
+        q = InterviewQuestion(
+            interview_id=interview_id,
+            question=question,
+            my_answer=body.get("my_answer"),
+            order_index=body.get("order_index", next_index),
+        )
+        session.add(q)
+        session.flush()
+        result = {"ok": True, "id": q.id}
+    return result
+
+
+@app.patch("/interview-questions/{question_id}")
+def update_question(question_id: int, body: dict):
+    from db.session import get_session
+    from db.models import InterviewQuestion
+
+    with get_session() as session:
+        q = session.get(InterviewQuestion, question_id)
+        if not q:
+            raise HTTPException(404, "Interview question not found")
+        if "question" in body:
+            q.question = body["question"]
+        if "my_answer" in body:
+            q.my_answer = body["my_answer"]
+        if "order_index" in body:
+            q.order_index = body["order_index"]
+    return {"ok": True}
+
+
+@app.delete("/interview-questions/{question_id}")
+def delete_question(question_id: int):
+    from db.session import get_session
+    from db.models import InterviewQuestion
+
+    with get_session() as session:
+        q = session.get(InterviewQuestion, question_id)
+        if not q:
+            raise HTTPException(404, "Interview question not found")
+        session.delete(q)
+    return {"ok": True}
+
+
+@app.post("/interview-questions/{question_id}/optimize-answer")
+async def optimize_question_answer(question_id: int):
+    from db.session import get_session
+    from db.models import InterviewQuestion, StarStory
+    from llm.interview_coach import optimize_answer
+
+    with get_session() as session:
+        q = session.get(InterviewQuestion, question_id)
+        if not q:
+            raise HTTPException(404, "Interview question not found")
+        stories = session.query(StarStory).all()
+        session.expunge(q)
+        for s in stories:
+            session.expunge(s)
+
+    result = await optimize_answer(q.question, q.my_answer or "", stories)
+
+    with get_session() as session:
+        q = session.get(InterviewQuestion, question_id)
+        if not q:
+            raise HTTPException(404, "Interview question not found")
+        if "error" not in result:
+            q.llm_feedback = result.get("critique")
+            q.optimized_answer = result.get("optimized_answer")
+        d = _question_dict(q)
+    return {**result, "question": d}
