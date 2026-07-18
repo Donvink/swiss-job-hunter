@@ -53,7 +53,7 @@ All scope and design decisions were confirmed directly with the user before plan
 - [x] Phase 5 — Interview questions + AI-optimize backend
 - [x] Phase 6 — STAR story CRUD backend
 - [x] Phase 7 — Cross-job search + upcoming aggregation
-- [ ] Phase 8 — Frontend scaffolding
+- [x] Phase 8 — Frontend scaffolding
 - [ ] Phase 9 — InterviewsPage (upcoming + search + sub-nav)
 - [ ] Phase 10 — JobInterviewsTab (rounds + retrospective + questions + AI-optimize)
 - [ ] Phase 11 — Resume Versions UI
