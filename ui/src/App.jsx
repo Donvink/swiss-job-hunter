@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-
-// window.__API_BASE_URL__ is injected at container startup (see
-// ui/docker-entrypoint.sh) so a single built image works across hosts;
-// import.meta.env.VITE_API_BASE_URL is the build-time fallback for local dev.
-const API = window.__API_BASE_URL__ || import.meta.env.VITE_API_BASE_URL || "http://localhost:8765";
+import { API } from "./api.js";
+import InterviewsPage from "./InterviewsPage.jsx";
+import JobInterviewsTab from "./JobInterviewsTab.jsx";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -470,7 +468,7 @@ export default function App() {
   const [linkedinExpLevel, setLinkedinExpLevel] = useState("3,4");
   const [direction, setDirection] = useState("all");
   const [directions, setDirections] = useState(DIRECTIONS_FALLBACK);
-  const [mainTab, setMainTab] = useState("board");   // board | tracker
+  const [mainTab, setMainTab] = useState("board");   // board | tracker | interviews
   const [rightTab, setRightTab] = useState("detail"); // detail | company | timeline | apply | tailor
   const [applyModal, setApplyModal] = useState(false);
   const [tailorResult, setTailorResult] = useState(null);
@@ -559,6 +557,17 @@ export default function App() {
       }
     } catch (e) { addLog(`✗ ${e.message}`); }
     setLookingUpCompany(false);
+  }, [addLog]);
+
+  const selectJobById = useCallback(async (id) => {
+    try {
+      const r = await fetch(`${API}/jobs/${id}`);
+      if (r.ok) {
+        setSelected(await r.json());
+        setMainTab("board");
+        setRightTab("interviews");
+      }
+    } catch (e) { addLog(`✗ ${e.message}`); }
   }, [addLog]);
 
   const selectJob = useCallback(async (job) => {
@@ -742,6 +751,7 @@ export default function App() {
           <div style={{width:1,height:16,background:"#d4cfc4"}}/>
           <Tab id="board" label="BOARD" active={mainTab==="board"} onClick={()=>setMainTab("board")}/>
           <Tab id="tracker" label="TRACKER" active={mainTab==="tracker"} onClick={()=>setMainTab("tracker")}/>
+          <Tab id="interviews" label="INTERVIEWS" active={mainTab==="interviews"} onClick={()=>setMainTab("interviews")}/>
           <div style={{flex:1}}/>
           <span style={{fontSize:9,color:stats.total>0?"#4d8a68":"#a8a098",fontFamily:"monospace"}}>
             ● {stats.total??0} JOBS IN DB
@@ -770,6 +780,8 @@ export default function App() {
 
           {mainTab==="tracker"
             ? <TrackerBoard onSelectJob={j=>{setSelected(j);setMainTab("board");}}/>
+            : mainTab==="interviews"
+            ? <InterviewsPage onSelectJob={selectJobById}/>
             : <>
               {/* LEFT PANEL */}
               <div style={{width:300,borderRight:"1px solid #d4cfc4",display:"flex",
@@ -1090,6 +1102,7 @@ export default function App() {
                   <RTab id="timeline" label="TIMELINE"/>
                   <RTab id="apply" label="APPLY"/>
                   <RTab id="tailor" label="TAILOR"/>
+                  <RTab id="interviews" label="INTERVIEWS"/>
                 </div>
 
                 {/* DETAIL TAB */}
@@ -1246,6 +1259,20 @@ export default function App() {
                         <div style={{fontSize:12,fontWeight:700,color:"#2c2820",marginBottom:2}}>{selected.title}</div>
                         <div style={{fontSize:10,color:"#8a8278",marginBottom:16}}>{selected.company}</div>
                         <Timeline jobId={selected.id} onRefresh={()=>{fetchJobs();fetchStats();}}/>
+                      </>
+                    }
+                  </div>
+                )}
+
+                {/* INTERVIEWS TAB */}
+                {rightTab==="interviews" && (
+                  <div style={{flex:1,overflowY:"auto",padding:18}}>
+                    {!selected
+                      ? <div style={{color:"#c4beb0",fontSize:12,textAlign:"center",marginTop:50}}>← select a job</div>
+                      : <>
+                        <div style={{fontSize:12,fontWeight:700,color:"#2c2820",marginBottom:2}}>{selected.title}</div>
+                        <div style={{fontSize:10,color:"#8a8278",marginBottom:16}}>{selected.company}</div>
+                        <JobInterviewsTab jobId={selected.id} onRefresh={()=>{fetchJobs();fetchStats();}}/>
                       </>
                     }
                   </div>
