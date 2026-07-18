@@ -1634,3 +1634,92 @@ async def optimize_question_answer(question_id: int):
             q.optimized_answer = result.get("optimized_answer")
         d = _question_dict(q)
     return {**result, "question": d}
+
+
+# ── STAR story endpoints ────────────────────────────────────────────────────────
+
+def _star_story_dict(s) -> dict:
+    return {
+        "id": s.id,
+        "title": s.title,
+        "tags": s.tags,
+        "situation": s.situation,
+        "task": s.task,
+        "action": s.action,
+        "result": s.result,
+        "created_at": s.created_at.isoformat(),
+        "updated_at": s.updated_at.isoformat(),
+    }
+
+
+@app.get("/star-stories")
+def list_star_stories():
+    from db.session import get_session
+    from db.models import StarStory
+    with get_session() as session:
+        stories = session.query(StarStory).order_by(StarStory.updated_at.desc()).all()
+        return [_star_story_dict(s) for s in stories]
+
+
+@app.post("/star-stories")
+def create_star_story(body: dict):
+    from db.session import get_session
+    from db.models import StarStory
+
+    title = body.get("title")
+    if not title:
+        raise HTTPException(400, "title is required")
+    for field in ("situation", "task", "action", "result"):
+        if not body.get(field):
+            raise HTTPException(400, f"{field} is required")
+
+    with get_session() as session:
+        story = StarStory(
+            title=title,
+            tags=body.get("tags"),
+            situation=body["situation"],
+            task=body["task"],
+            action=body["action"],
+            result=body["result"],
+        )
+        session.add(story)
+        session.flush()
+        result = {"ok": True, "id": story.id}
+    return result
+
+
+@app.patch("/star-stories/{story_id}")
+def update_star_story(story_id: int, body: dict):
+    from db.session import get_session
+    from db.models import StarStory
+
+    with get_session() as session:
+        story = session.get(StarStory, story_id)
+        if not story:
+            raise HTTPException(404, "Star story not found")
+        if "title" in body:
+            story.title = body["title"]
+        if "tags" in body:
+            story.tags = body["tags"]
+        if "situation" in body:
+            story.situation = body["situation"]
+        if "task" in body:
+            story.task = body["task"]
+        if "action" in body:
+            story.action = body["action"]
+        if "result" in body:
+            story.result = body["result"]
+    return {"ok": True}
+
+
+@app.delete("/star-stories/{story_id}")
+def delete_star_story(story_id: int):
+    from db.session import get_session
+    from db.models import StarStory
+
+    with get_session() as session:
+        story = session.get(StarStory, story_id)
+        if not story:
+            raise HTTPException(404, "Star story not found")
+        session.delete(story)
+    return {"ok": True}
