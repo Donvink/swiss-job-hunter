@@ -106,6 +106,9 @@ class Job(Base):
     events: Mapped[list[JobEvent]] = relationship(
         "JobEvent", back_populates="job", order_by="JobEvent.occurred_at"
     )
+    interviews: Mapped[list[Interview]] = relationship(
+        "Interview", back_populates="job", order_by="Interview.scheduled_at"
+    )
 
     __table_args__ = (
         Index("ix_jobs_status_score", "status", "match_score"),
@@ -155,8 +158,14 @@ class Application(Base):
     applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    resume_version_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("resume_versions.id"), nullable=True
+    )
 
     job: Mapped[Job] = relationship("Job", back_populates="application")
+    resume_version: Mapped[Optional[ResumeVersion]] = relationship(
+        "ResumeVersion", back_populates="applications"
+    )
 
 
 class CompanyInfo(Base):
@@ -187,3 +196,127 @@ class JobEvent(Base):
 
     def __repr__(self) -> str:
         return f"<JobEvent job={self.job_id} type={self.event_type} at={self.occurred_at}>"
+
+
+class FileFormat(str, PyEnum):
+    PDF  = "pdf"
+    DOCX = "docx"
+    TXT  = "txt"
+
+
+class InterviewType(str, PyEnum):
+    PHONE_SCREEN = "phone_screen"
+    TECHNICAL    = "technical"
+    BEHAVIORAL   = "behavioral"
+    ONSITE       = "onsite"
+    FINAL        = "final"
+    OTHER        = "other"
+
+
+class InterviewFormat(str, PyEnum):
+    VIDEO  = "video"
+    PHONE  = "phone"
+    ONSITE = "onsite"
+
+
+class InterviewOutcome(str, PyEnum):
+    PENDING   = "pending"
+    PASSED    = "passed"
+    FAILED    = "failed"
+    CANCELLED = "cancelled"
+
+
+class ResumeVersion(Base):
+    """A single uploaded/imported resume file, scoped to a direction (or direction-less)."""
+    __tablename__ = "resume_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    direction: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # None = data/cv.txt
+    label: Mapped[str] = mapped_column(String(200))
+    original_filename: Mapped[str] = mapped_column(String(500))
+    file_path: Mapped[str] = mapped_column(String(1000))
+    file_format: Mapped[str] = mapped_column(Enum(FileFormat))
+    extracted_text: Mapped[str] = mapped_column(Text)
+    changelog: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+
+    applications: Mapped[list[Application]] = relationship(
+        "Application", back_populates="resume_version"
+    )
+
+    __table_args__ = (
+        Index("ix_resume_versions_direction_active", "direction", "is_active"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ResumeVersion id={self.id} direction={self.direction} label='{self.label}'>"
+
+
+class Interview(Base):
+    """A single interview round for a job. Replaces the fixed-enum ApplicationEvent rounds."""
+    __tablename__ = "interviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(Integer, ForeignKey("jobs.id"), index=True)
+    round_number: Mapped[int] = mapped_column(Integer)
+    interview_type: Mapped[str] = mapped_column(Enum(InterviewType))
+    scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    interviewer_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    format: Mapped[Optional[str]] = mapped_column(Enum(InterviewFormat), nullable=True)
+    duration_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    prep_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    outcome: Mapped[str] = mapped_column(Enum(InterviewOutcome), default=InterviewOutcome.PENDING)
+
+    # Retrospective fields
+    self_rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1-5
+    went_well: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    to_improve: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
+
+    job: Mapped[Job] = relationship("Job", back_populates="interviews")
+    questions: Mapped[list[InterviewQuestion]] = relationship(
+        "InterviewQuestion", back_populates="interview", order_by="InterviewQuestion.order_index"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Interview id={self.id} job={self.job_id} round={self.round_number}>"
+
+
+class InterviewQuestion(Base):
+    """A single question asked (or expected) in an interview round, with optional AI-optimized answer."""
+    __tablename__ = "interview_questions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    interview_id: Mapped[int] = mapped_column(Integer, ForeignKey("interviews.id"), index=True)
+    question: Mapped[str] = mapped_column(Text)
+    my_answer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    llm_feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    optimized_answer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+
+    interview: Mapped[Interview] = relationship("Interview", back_populates="questions")
+
+    def __repr__(self) -> str:
+        return f"<InterviewQuestion id={self.id} interview={self.interview_id}>"
+
+
+class StarStory(Base):
+    """Standalone STAR-format personal story, independent of resumes/interviews."""
+    __tablename__ = "star_stories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(300))
+    tags: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # comma-separated
+    situation: Mapped[str] = mapped_column(Text)
+    task: Mapped[str] = mapped_column(Text)
+    action: Mapped[str] = mapped_column(Text)
+    result: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
+
+    def __repr__(self) -> str:
+        return f"<StarStory id={self.id} title='{self.title}'>"
