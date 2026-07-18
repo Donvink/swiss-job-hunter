@@ -50,7 +50,7 @@ All scope and design decisions were confirmed directly with the user before plan
 - [x] Phase 2 — Core backend refactor
 - [x] Phase 3 — Resume version backend
 - [x] Phase 4 — Interview CRUD backend
-- [ ] Phase 5 — Interview questions + AI-optimize backend
+- [x] Phase 5 — Interview questions + AI-optimize backend
 - [ ] Phase 6 — STAR story CRUD backend
 - [ ] Phase 7 — Cross-job search + upcoming aggregation
 - [ ] Phase 8 — Frontend scaffolding
