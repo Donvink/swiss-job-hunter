@@ -117,11 +117,14 @@ def test_compose_passes_api_base_url_with_localhost_default() -> None:
 
 
 def test_app_jsx_reads_build_time_api_url_with_fallback() -> None:
-    app = _read("ui/src/App.jsx")
+    """The API base URL constant lives in api.js (Phase 8 extracted it out of
+    App.jsx); App.jsx just imports it."""
+    api_js = _read("ui/src/api.js")
     assert (
-        'const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8765";'
-        in app
+        'import.meta.env.VITE_API_BASE_URL || "http://localhost:8765"' in api_js
     )
+    app = _read("ui/src/App.jsx")
+    assert 'import { API } from "./api.js";' in app
 
 
 # ── nginx ────────────────────────────────────────────────────────────────────
