@@ -1,6 +1,7 @@
 import { useState } from "react";
 import UpcomingInterviews from "./UpcomingInterviews.jsx";
 import QuestionSearch from "./QuestionSearch.jsx";
+import ResumeVersions from "./ResumeVersions.jsx";
 
 const SUB_TABS = [
   { id: "upcoming", label: "UPCOMING" },
@@ -9,7 +10,7 @@ const SUB_TABS = [
   { id: "stories",  label: "STORIES" },
 ];
 
-export default function InterviewsPage({ onSelectJob }) {
+export default function InterviewsPage({ onSelectJob, addLog }) {
   const [interviewSubTab, setInterviewSubTab] = useState("upcoming");
 
   return (
@@ -33,9 +34,7 @@ export default function InterviewsPage({ onSelectJob }) {
       <div style={{flex:1,overflowY:"auto",padding:20}}>
         {interviewSubTab==="upcoming" && <UpcomingInterviews onSelectJob={onSelectJob}/>}
         {interviewSubTab==="search" && <QuestionSearch onSelectJob={onSelectJob}/>}
-        {interviewSubTab==="resumes" && (
-          <div style={{color:"#c4beb0",fontSize:12,textAlign:"center",marginTop:50}}>RESUMES — coming soon</div>
-        )}
+        {interviewSubTab==="resumes" && <ResumeVersions addLog={addLog}/>}
         {interviewSubTab==="stories" && (
           <div style={{color:"#c4beb0",fontSize:12,textAlign:"center",marginTop:50}}>STORIES — coming soon</div>
         )}

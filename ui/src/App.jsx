@@ -781,7 +781,7 @@ export default function App() {
           {mainTab==="tracker"
             ? <TrackerBoard onSelectJob={j=>{setSelected(j);setMainTab("board");}}/>
             : mainTab==="interviews"
-            ? <InterviewsPage onSelectJob={selectJobById}/>
+            ? <InterviewsPage onSelectJob={selectJobById} addLog={addLog}/>
             : <>
               {/* LEFT PANEL */}
               <div style={{width:300,borderRight:"1px solid #d4cfc4",display:"flex",
