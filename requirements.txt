@@ -12,6 +12,11 @@ lxml>=5.2.0
 sqlalchemy>=2.0.0
 alembic>=1.13.0
 
+# Resume file parsing
+pypdf>=4.2.0
+python-docx>=1.1.0
+python-multipart>=0.0.9   # required for FastAPI UploadFile/Form
+
 # Dedup
 sentence-transformers>=3.0.0
 numpy>=1.26.0
