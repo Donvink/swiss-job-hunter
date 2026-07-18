@@ -33,13 +33,13 @@ Swiss Job Hunter automates the boring parts:
 
 ### 🚀 Latest
 
+- **Jul 2026** — Interview management system — resume version library, per-round interview tracking with retrospectives, a STAR story library, and cross-job question search, on top of the existing application tracker
 - **Jul 2026** — 🚀 **[eurojobhunter.com](https://eurojobhunter.com) is live** — the hosted version of this project, no Docker, no API keys, 100% free to use (scan, score, triage, track, get notified)
 - **Jul 2026** — Guided onboarding, daily automated scans, and Telegram/email alerts the moment a strong match appears
 - **Jun 2026** — Multi-user scheduler and AES-encrypted CV storage shipped, laying the groundwork for the hosted version
 
 ### 🔭 What's next
 
-- Richer interview management — resume versioning, interview-stage tracking, and post-interview retrospectives, on top of the existing application tracker
 - More European job boards beyond Switzerland (DACH + EU expansion)
 
 👉 **[Share feedback — help shape what gets built next](https://tally.so/r/0QG5L0)**
