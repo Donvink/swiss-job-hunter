@@ -35,6 +35,21 @@ from llm.json_repair import parse_llm_json
             {"score": 0.8, "meta": {"provider": "openai"}},
             id="truncated-after-a-closed-nested-object",
         ),
+        pytest.param(
+            '{"score": 0.8, "notes": "trailing comma",}',
+            {"score": 0.8, "notes": "trailing comma"},
+            id="trailing-comma-before-closing-brace",
+        ),
+        pytest.param(
+            '{"score": 0.8, "matched_skills": ["python", "sql",]}',
+            {"score": 0.8, "matched_skills": ["python", "sql"]},
+            id="trailing-comma-before-closing-bracket",
+        ),
+        pytest.param(
+            '{"score": 0.8, "matched_skills": ["python", "sql"], "explanation": "great fit for the ro',
+            {"score": 0.8, "matched_skills": ["python", "sql"], "explanation": "great fit for the ro"},
+            id="flat-object-truncated-mid-string-with-no-closing-brace",
+        ),
     ],
 )
 def test_parse_llm_json_valid_inputs(raw, expected):
@@ -47,16 +62,7 @@ def test_parse_llm_json_no_object_found_raises():
 
 
 def test_parse_llm_json_unrepairable_truncation_raises():
+    """A malformed token (here: "0." with no trailing digit) isn't something
+    bracket/string repair can fix — it should still raise."""
     with pytest.raises(json.JSONDecodeError):
         parse_llm_json('{"score": 0.')
-
-
-def test_parse_llm_json_flat_object_truncated_mid_string_is_unrepairable():
-    """Known gap: the bracket-repair fallback only fires once a literal '}' is
-    present somewhere in the text (regex requires \\{.*\\}). Single-level
-    objects like this repo's score/matched_skills/explanation payloads never
-    contain a nested '}', so a mid-string cutoff with no trailing brace at all
-    still raises instead of being repaired."""
-    raw = '{"score": 0.8, "matched_skills": ["python", "sql"], "explanation": "great fit for the ro'
-    with pytest.raises(json.JSONDecodeError):
-        parse_llm_json(raw)
