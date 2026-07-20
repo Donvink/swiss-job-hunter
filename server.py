@@ -76,7 +76,7 @@ def get_jobs_query(status: str = "all", q: str = "", direction: str = "all", min
         if status != "all":
             query = query.filter(Job.status == status)
         if direction != "all":
-            query = query.filter(Job.direction == direction)
+            query = query.filter(or_(Job.direction == direction, Job.direction.is_(None)))
         if q:
             query = query.filter(
                 or_(
