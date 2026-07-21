@@ -51,6 +51,37 @@ const ADDABLE_EVENTS = [
   "technical","offer_received","offer_accepted","offer_declined","rejected","note",
 ];
 
+// posted_at isn't always available from the source site — callers must handle null.
+function timeAgo(iso) {
+  if (!iso) return null;
+  const diffDays = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (diffDays <= 0) return "today";
+  if (diffDays === 1) return "1d ago";
+  if (diffDays < 30) return `${diffDays}d ago`;
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) return `${diffMonths}mo ago`;
+  return `${Math.floor(diffMonths / 12)}y ago`;
+}
+
+// Calendar-day buckets (not 24h windows) so "today"/"yesterday" match the user's clock.
+// Jobs with no posted_at (source doesn't expose it) fall into "earlier" as the safe default.
+const POSTED_BUCKETS = [
+  { key: "today",     label: "今天",     color: "#4d8a68" },
+  { key: "yesterday", label: "昨天",     color: "#4d7ab5" },
+  { key: "last5",     label: "最近五天", color: "#a87c2e" },
+  { key: "earlier",   label: "更早之前", color: "#8a8278" },
+];
+
+function postedBucket(iso) {
+  if (!iso) return "earlier";
+  const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round((startOfDay(new Date()) - startOfDay(new Date(iso))) / 86400000);
+  if (diffDays <= 0) return "today";
+  if (diffDays === 1) return "yesterday";
+  if (diffDays <= 6) return "last5";
+  return "earlier";
+}
+
 // ── Tiny components ───────────────────────────────────────────────────────────
 
 function Stars({ stars, jobId, onUpdate }) {
@@ -457,7 +488,7 @@ export default function App() {
   const [searchKws, setSearchKws] = useState(["Agent"]);
   const [searchKwInput, setSearchKwInput] = useState("");
   const [searchLoc, setSearchLoc] = useState("Zürich");
-  const [searchSrc, setSearchSrc] = useState(["jobs.ch"]);
+  const [searchSrc, setSearchSrc] = useState(SOURCES);
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterText, setFilterText] = useState("");
   const [filterMinStars, setFilterMinStars] = useState(0);
@@ -636,6 +667,30 @@ export default function App() {
     }
   }, [searchKws, searchKwInput, searchSrc, searchLoc, searchPages, direction, linkedinTimeRange, linkedinExpLevel, threshold, runStream, addLog]);
 
+  const runPipelineKeyword = useCallback(async () => {
+    if (pipelineRunning.current) { addLog("✗ Pipeline already running"); return; }
+    const kws = searchKwInput.trim() ? [...searchKws, searchKwInput.trim()] : searchKws;
+    if (!kws.length) { addLog("✗ No keywords set"); return; }
+    const dir = direction === "all" ? null : direction;
+    const enrichable = ["jobs.ch","jobscout24.ch","swissdevjobs.ch","züri.jobs","efinancialcareers.ch","jobup.ch","linkedin.com","michael-page.ch"];
+    const enrichSources = searchSrc.filter(s => enrichable.includes(s));
+
+    pipelineRunning.current = true;
+    setLoading(p=>({...p, pipelineKw:true}));
+    addLog("━━━ PIPELINE START (keyword) ━━━");
+    try {
+      await runStream("run/search", {keywords:kws, keyword:kws[0]||"", location:searchLoc, sources:searchSrc, pages:searchPages, semantic:false, direction:dir, linkedin_time_range:linkedinTimeRange, linkedin_experience_level:linkedinExpLevel}, "search");
+      for (const src of (enrichSources.length ? enrichSources : [searchSrc[0]||"jobs.ch"])) {
+        await runStream("run/enrich", {limit:9999, source:src, rescore_llm:false, direction:dir}, `enrich-${src}`);
+      }
+      await runStream("run/analyze", {limit:9999, llm:false, direction:dir}, "analyze-kw");
+      addLog("━━━ PIPELINE DONE ━━━");
+    } finally {
+      pipelineRunning.current = false;
+      setLoading(p=>({...p, pipelineKw:false}));
+    }
+  }, [searchKws, searchKwInput, searchSrc, searchLoc, searchPages, direction, linkedinTimeRange, linkedinExpLevel, runStream, addLog]);
+
   const generateCover = async (job) => {
     setLoading(p=>({...p,cover:true}));
     try {
@@ -686,6 +741,15 @@ export default function App() {
     (filterStatus==="all"||j.status===filterStatus) &&
     (threshold===0 || (j.match_score!=null && j.match_score*100 >= threshold))
   );
+
+  const visibleGroups = POSTED_BUCKETS
+    .map(b => ({
+      ...b,
+      jobs: visible
+        .filter(j => postedBucket(j.posted_at) === b.key)
+        .sort((a,b2) => (b2.match_score ?? -1) - (a.match_score ?? -1)),
+    }))
+    .filter(g => g.jobs.length > 0);
 
   const Tab = ({id,label,active,onClick}) => (
     <button onClick={onClick} style={{
@@ -781,7 +845,7 @@ export default function App() {
                 <div style={{padding:"10px 12px",borderBottom:"1px solid #ddd8cc"}}>
                   <div style={{fontSize:8,letterSpacing:"0.12em",fontWeight:700,marginBottom:6,display:"flex",alignItems:"center",gap:6}}>
                     <span style={{background:"#4d7ab5",color:"#fff",borderRadius:3,padding:"0px 5px",fontSize:8}}>01</span>
-                    <span style={{color:"#5e5850"}}>SEARCH</span>
+                    <span style={{color:"#5e5850"}}>PIPELINE</span>
                   </div>
                   <div style={{display:"flex",gap:3,marginBottom:4}}>
                     {["all",...directions].map(d=>(
@@ -886,23 +950,26 @@ export default function App() {
                       <option value="4,5">LinkedIn · Senior–Director</option>
                     </select>
                   </>)}
-                  <Btn onClick={()=>{
-                    const kws = searchKwInput.trim()
-                      ? [...searchKws, searchKwInput.trim()]
-                      : searchKws;
-                    runStream("run/search",{keywords:kws,keyword:kws[0]||"",location:searchLoc,sources:searchSrc,pages:searchPages,semantic:false,direction:direction==="all"?null:direction,linkedin_time_range:linkedinTimeRange,linkedin_experience_level:linkedinExpLevel},"search");
-                  }} loading={loading.search} label="RUN SEARCH" icon="⬇" color="#4d7ab5"/>
-                  <Btn onClick={runPipeline}
-                    loading={loading.pipeline}
-                    disabled={loading.pipeline||loading.search||loading["analyze-llm"]||Object.keys(loading).some(k=>k.startsWith("enrich")&&loading[k])}
-                    label="SEARCH + ENRICH + SCORE" icon="⚡" color="#9070c8"/>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    <Btn onClick={runPipelineKeyword}
+                      loading={loading.pipelineKw}
+                      disabled={loading.pipelineKw||loading.pipeline||loading.search||loading.analyze||Object.keys(loading).some(k=>k.startsWith("enrich")&&loading[k])}
+                      label="SEARCH + SCORE (KEYWORD)" icon="⚡" color="#a87c2e"/>
+                    <Btn onClick={runPipeline}
+                      loading={loading.pipeline}
+                      disabled={loading.pipelineKw||loading.pipeline||loading.search||loading["analyze-llm"]||Object.keys(loading).some(k=>k.startsWith("enrich")&&loading[k])}
+                      label="SEARCH + SCORE (KEYWORD + LLM)" icon="⚡" color="#9070c8"/>
+                    <Btn onClick={()=>runStream("run/check-links",{auto_archive:true,concurrency:10,min_score:threshold/100},"check-links")}
+                      loading={loading["check-links"]} label="CHECK DEAD LINKS" icon="🔗"
+                      color="#c06838" disabled={!stats.total}/>
+                  </div>
                 </div>
 
-                {/* Pipeline + Cleanup */}
+                {/* Tools + Cleanup */}
                 <div style={{padding:"10px 12px",borderBottom:"1px solid #ddd8cc",display:"flex",flexDirection:"column",gap:3}}>
                   <div style={{fontSize:8,letterSpacing:"0.12em",fontWeight:700,marginBottom:2,display:"flex",alignItems:"center",gap:6}}>
                     <span style={{background:"#4d7ab5",color:"#fff",borderRadius:3,padding:"0px 5px",fontSize:8}}>02</span>
-                    <span style={{color:"#5e5850"}}>PIPELINE</span>
+                    <span style={{color:"#5e5850"}}>TOOLS</span>
                   </div>
 
                   <PipeGroup label="ENRICH"/>
@@ -915,36 +982,24 @@ export default function App() {
                   }}
                     loading={loading.enrich} label="ENRICH DESCRIPTIONS" icon="📄"
                     color="#4d8a68" disabled={!stats.total}/>
-                  <Btn onClick={()=>{
-                    const enrichable = ["jobs.ch","jobscout24.ch","swissdevjobs.ch","züri.jobs","efinancialcareers.ch","jobup.ch","linkedin.com","michael-page.ch"];
-                    const sources = searchSrc.filter(s => enrichable.includes(s));
-                    const dir = direction==="all"?null:direction;
-                    if(sources.length) sources.forEach(src => runStream("run/enrich",{limit:9999,source:src,rescore_llm:true,direction:dir},`enrich-llm-${src}`));
-                    else runStream("run/enrich",{limit:9999,source:searchSrc[0]||"jobs.ch",rescore_llm:true,direction:dir},"enrich-llm");
-                  }}
-                    loading={loading["enrich-llm"]} label="ENRICH + LLM SCORE" icon="🧠"
-                    color="#9070c8" disabled={!stats.total}/>
 
                   <PipeGroup label="SCORE"/>
-                  <Btn onClick={()=>runStream("run/analyze",{limit:9999,llm:false,direction:direction==="all"?null:direction},"analyze")}
-                    loading={loading.analyze} label="SCORE (KEYWORD)" icon="⚡"
-                    color="#a87c2e" disabled={!stats.total}/>
                   <div style={{display:"flex",alignItems:"center",gap:5}}>
+                    <Btn onClick={()=>runStream("run/analyze",{limit:9999,llm:false,direction:direction==="all"?null:direction},"analyze")}
+                      loading={loading.analyze} label="SCORE (KEYWORD)" icon="⚡"
+                      color="#a87c2e" disabled={!stats.total}/>
                     <Btn onClick={()=>runStream("run/analyze",{limit:9999,llm:true,archive_below:threshold/100,direction:direction==="all"?null:direction},"analyze-llm")}
                       loading={loading["analyze-llm"]} label="SCORE (LLM)" icon="🧠"
                       color="#9070c8" disabled={!stats.total}/>
-                    <Btn onClick={()=>runStream("run/analyze",{llm:true,skip_scored:false,archive_below:threshold/100,concurrency:10,direction:direction==="all"?null:direction},"rescore-all")}
-                      loading={loading["rescore-all"]} label="RESCORE ALL" icon="🔄"
-                      color="#6464a8" disabled={!stats.total}/>
                   </div>
+                  <Btn onClick={()=>runStream("run/analyze",{llm:true,skip_scored:false,archive_below:threshold/100,concurrency:10,direction:direction==="all"?null:direction},"rescore-all")}
+                    loading={loading["rescore-all"]} label="RESCORE ALL" icon="🔄"
+                    color="#6464a8" disabled={!stats.total}/>
 
                   <PipeGroup label="MAINTENANCE"/>
                   <Btn onClick={()=>runStream("run/company-lookup",{min_score:threshold/100},"company-lookup")}
                     loading={loading["company-lookup"]} label="LOOKUP COMPANIES" icon="🏢"
                     color="#3d8a9a" disabled={!stats.total}/>
-                  <Btn onClick={()=>runStream("run/check-links",{auto_archive:true,concurrency:10,min_score:threshold/100},"check-links")}
-                    loading={loading["check-links"]} label="CHECK DEAD LINKS" icon="🔗"
-                    color="#c06838" disabled={!stats.total}/>
                   <div style={{fontSize:9,color:"#b0a898",fontFamily:"monospace",marginTop:-1,paddingLeft:2}}>
                     uses threshold ≥ {threshold}% (set in FILTER below)
                   </div>
@@ -957,10 +1012,11 @@ export default function App() {
                     <div style={{flex:1,height:1,background:"#d4cfc4"}}/>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    <Btn onClick={()=>runStream("run/purge-archived",{max_score:threshold/100,dry_run:true},"purge-preview")}
-                      loading={loading["purge-preview"]} label="PREVIEW" icon="🔍" small color="#8a8278"/>
                     <Btn onClick={()=>runStream("run/purge-archived",{max_score:threshold/100,dry_run:false},"purge")}
                       loading={loading["purge"]} label="PURGE" icon="🗑" small color="#b84848"/>
+                  </div>
+                  <div style={{fontSize:9,color:"#b0a898",fontFamily:"monospace",marginTop:-1,paddingLeft:2}}>
+                    permanently deletes new/analyzed/archived jobs scoring below {threshold}% — no undo
                   </div>
                 </div>
 
@@ -1035,46 +1091,65 @@ export default function App() {
                     ? <div style={{padding:40,textAlign:"center",color:"#c4beb0",fontSize:12}}>
                         no jobs — run a search first
                       </div>
-                    : visible.map(j=>(
-                      <div key={j.id}
-                        className={`jr${selected?.id===j.id?" sel":""}`}
-                        onClick={()=>selectJob(j)}
-                        style={{
-                          padding:"10px 14px",borderBottom:"1px solid #e8e3d8",
-                          borderLeft:"2px solid transparent",
-                          display:"grid",gridTemplateColumns:"26px 1fr 100px 66px 70px 52px 18px",
-                          alignItems:"center",gap:8,cursor:"pointer",transition:"background 0.1s",
+                    : visibleGroups.map(group=>(
+                      <div key={group.key}>
+                        <div style={{
+                          padding:"7px 14px",fontSize:11,fontWeight:800,letterSpacing:"0.12em",
+                          color:group.color,background:`${group.color}1c`,
+                          borderTop:`1px solid ${group.color}30`,borderBottom:`2px solid ${group.color}60`,
+                          position:"sticky",top:0,zIndex:2,
+                          display:"flex",alignItems:"center",gap:8,
+                          boxShadow:"0 1px 3px rgba(0,0,0,0.08)",
                         }}>
-                        <span style={{fontSize:9,color:"#b0a898",fontWeight:700}}>#{j.id}</span>
-                        <div style={{minWidth:0}}>
-                          <div style={{fontSize:11,fontWeight:600,color:"#2c2820",marginBottom:2,
-                            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{j.title}</div>
-                          <div style={{fontSize:9,color:"#7a7268",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                            {j.company} · {j.location}
+                          <span style={{width:6,height:6,borderRadius:"50%",background:group.color,flexShrink:0}}/>
+                          <span>{group.label}</span>
+                          <span style={{
+                            fontSize:9,fontWeight:700,color:"#fff",background:group.color,
+                            padding:"1px 6px",borderRadius:8,letterSpacing:0,
+                          }}>{group.jobs.length}</span>
+                        </div>
+                        {group.jobs.map(j=>(
+                          <div key={j.id}
+                            className={`jr${selected?.id===j.id?" sel":""}`}
+                            onClick={()=>selectJob(j)}
+                            style={{
+                              padding:"10px 14px",borderBottom:"1px solid #e8e3d8",
+                              borderLeft:"2px solid transparent",
+                              display:"grid",gridTemplateColumns:"26px 1fr 100px 66px 70px 52px 18px",
+                              alignItems:"center",gap:8,cursor:"pointer",transition:"background 0.1s",
+                            }}>
+                            <span style={{fontSize:9,color:"#b0a898",fontWeight:700}}>#{j.id}</span>
+                            <div style={{minWidth:0}}>
+                              <div style={{fontSize:11,fontWeight:600,color:"#2c2820",marginBottom:2,
+                                overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{j.title}</div>
+                              <div style={{fontSize:9,color:"#7a7268",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                {j.company} · {j.location}{j.posted_at && ` · ${timeAgo(j.posted_at)}`}
+                              </div>
+                            </div>
+                            <Badge status={j.status}/>
+                            <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"flex-end"}}>
+                              <ScoreBar score={j.match_score}/>
+                              {j.user_stars && <Stars stars={j.user_stars} jobId={j.id} onUpdate={()=>{fetchJobs();fetchStats();}}/>}
+                            </div>
+                            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2}}>
+                              {j.direction&&<span style={{fontSize:7,fontFamily:"monospace",fontWeight:700,
+                                color:"#fff",background:"#4d7ab5",padding:"1px 4px",borderRadius:2,letterSpacing:"0.06em"}}>
+                                {j.direction.toUpperCase()}</span>}
+                              <div style={{fontSize:8,color:"#b0a898",fontFamily:"monospace"}}>
+                                {j.source?.replace(/\.(ch|com)/,"")}
+                              </div>
+                            </div>
+                            <button onClick={e=>{e.stopPropagation();deleteJob(j.id);}} title="Delete"
+                              style={{border:"none",background:"none",color:"#d4cfc4",cursor:"pointer",
+                                padding:0,fontSize:12,lineHeight:1,display:"flex",alignItems:"center",
+                                justifyContent:"center",borderRadius:3,width:18,height:18,
+                                transition:"color 0.15s, background 0.15s"}}
+                              onMouseEnter={e=>{e.currentTarget.style.color="#b84848";e.currentTarget.style.background="#f8e8e8";}}
+                              onMouseLeave={e=>{e.currentTarget.style.color="#d4cfc4";e.currentTarget.style.background="none";}}>
+                              ✕
+                            </button>
                           </div>
-                        </div>
-                        <Badge status={j.status}/>
-                        <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"flex-end"}}>
-                          <ScoreBar score={j.match_score}/>
-                          {j.user_stars && <Stars stars={j.user_stars} jobId={j.id} onUpdate={()=>{fetchJobs();fetchStats();}}/>}
-                        </div>
-                        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2}}>
-                          {j.direction&&<span style={{fontSize:7,fontFamily:"monospace",fontWeight:700,
-                            color:"#fff",background:"#4d7ab5",padding:"1px 4px",borderRadius:2,letterSpacing:"0.06em"}}>
-                            {j.direction.toUpperCase()}</span>}
-                          <div style={{fontSize:8,color:"#b0a898",fontFamily:"monospace"}}>
-                            {j.source?.replace(/\.(ch|com)/,"")}
-                          </div>
-                        </div>
-                        <button onClick={e=>{e.stopPropagation();deleteJob(j.id);}} title="Delete"
-                          style={{border:"none",background:"none",color:"#d4cfc4",cursor:"pointer",
-                            padding:0,fontSize:12,lineHeight:1,display:"flex",alignItems:"center",
-                            justifyContent:"center",borderRadius:3,width:18,height:18,
-                            transition:"color 0.15s, background 0.15s"}}
-                          onMouseEnter={e=>{e.currentTarget.style.color="#b84848";e.currentTarget.style.background="#f8e8e8";}}
-                          onMouseLeave={e=>{e.currentTarget.style.color="#d4cfc4";e.currentTarget.style.background="none";}}>
-                          ✕
-                        </button>
+                        ))}
                       </div>
                     ))
                   }
@@ -1119,6 +1194,11 @@ export default function App() {
                             <Badge status={selected.status}/>
                             {selected.employment_type&&<span style={{fontSize:9,color:"#7a7268",background:"#ddd8cc",padding:"2px 6px",borderRadius:3}}>{selected.employment_type}</span>}
                             {selected.match_score!=null&&<span style={{fontSize:9,color:"#4d8a68"}}>match {Math.round(selected.match_score*100)}%</span>}
+                          </div>
+                          <div style={{fontSize:9,color:"#a8a098",fontFamily:"monospace",marginTop:6}}>
+                            {selected.posted_at
+                              ? `posted ${timeAgo(selected.posted_at)} · ${new Date(selected.posted_at).toLocaleDateString("de-CH")}`
+                              : "posted date unknown"}
                           </div>
                         </div>
 
