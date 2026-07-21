@@ -429,11 +429,11 @@ If you use this code to provide a hosted service, you must release your modifica
 
 ## Star History
 
-<a href="https://www.star-history.com/?type=date&repos=Donvink%2Fswiss-job-hunter">
+<a href="https://www.star-history.com/?repos=Donvink%2Fswiss-job-hunter&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Donvink/swiss-job-hunter&type=date&theme=dark&legend=top-left&sealed_token=XixnC4iv5p1ZD2fZAAQg4e-NVqxU4xkVv6p0leCAJQupv8p66Z-nWqh5I5IULKXWCW6kPHL5U5IIWcolkNz3BvwBeoLy8KDQ51e-JjgzDSG9IfjpaDmamaPFzKhD2XZFOmRWi9_Eu8n_0Zboxw2Dod-H9Ao1rOJWK5mxQVQ0PC6E14j85Zspa6_dJ6VH" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Donvink/swiss-job-hunter&type=date&legend=top-left&sealed_token=XixnC4iv5p1ZD2fZAAQg4e-NVqxU4xkVv6p0leCAJQupv8p66Z-nWqh5I5IULKXWCW6kPHL5U5IIWcolkNz3BvwBeoLy8KDQ51e-JjgzDSG9IfjpaDmamaPFzKhD2XZFOmRWi9_Eu8n_0Zboxw2Dod-H9Ao1rOJWK5mxQVQ0PC6E14j85Zspa6_dJ6VH" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Donvink/swiss-job-hunter&type=date&legend=top-left&sealed_token=XixnC4iv5p1ZD2fZAAQg4e-NVqxU4xkVv6p0leCAJQupv8p66Z-nWqh5I5IULKXWCW6kPHL5U5IIWcolkNz3BvwBeoLy8KDQ51e-JjgzDSG9IfjpaDmamaPFzKhD2XZFOmRWi9_Eu8n_0Zboxw2Dod-H9Ao1rOJWK5mxQVQ0PC6E14j85Zspa6_dJ6VH" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Donvink/swiss-job-hunter&type=date&theme=dark&legend=top-left&sealed_token=38c_tiokar2zj4_LJO2rteQSHcrdbluYDJxp4_MxVgYTmDxFUujCdMY1Xb1M92jRR1spAIygXOCKXceDEpVsdj_3poDMfvFvO_Y6J-VtnBUj9D3XR4qdWAsaEYNk9f8hJbO1Lpo7l-xoNTwGCLmFOOcvy7_qJtJ_Mm0CTbSFYXRqwLki1txuItAF_86W" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Donvink/swiss-job-hunter&type=date&legend=top-left&sealed_token=38c_tiokar2zj4_LJO2rteQSHcrdbluYDJxp4_MxVgYTmDxFUujCdMY1Xb1M92jRR1spAIygXOCKXceDEpVsdj_3poDMfvFvO_Y6J-VtnBUj9D3XR4qdWAsaEYNk9f8hJbO1Lpo7l-xoNTwGCLmFOOcvy7_qJtJ_Mm0CTbSFYXRqwLki1txuItAF_86W" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Donvink/swiss-job-hunter&type=date&legend=top-left&sealed_token=38c_tiokar2zj4_LJO2rteQSHcrdbluYDJxp4_MxVgYTmDxFUujCdMY1Xb1M92jRR1spAIygXOCKXceDEpVsdj_3poDMfvFvO_Y6J-VtnBUj9D3XR4qdWAsaEYNk9f8hJbO1Lpo7l-xoNTwGCLmFOOcvy7_qJtJ_Mm0CTbSFYXRqwLki1txuItAF_86W" />
  </picture>
 </a>
 
