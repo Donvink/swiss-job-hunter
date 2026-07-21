@@ -66,10 +66,10 @@ function timeAgo(iso) {
 // Calendar-day buckets (not 24h windows) so "today"/"yesterday" match the user's clock.
 // Jobs with no posted_at (source doesn't expose it) fall into "earlier" as the safe default.
 const POSTED_BUCKETS = [
-  { key: "today",     label: "今天",     color: "#4d8a68" },
-  { key: "yesterday", label: "昨天",     color: "#4d7ab5" },
-  { key: "last5",     label: "最近五天", color: "#a87c2e" },
-  { key: "earlier",   label: "更早之前", color: "#8a8278" },
+  { key: "today",     label: "Today",     color: "#4d8a68" },
+  { key: "yesterday", label: "Yesterday", color: "#4d7ab5" },
+  { key: "last5",     label: "Last 5 Days", color: "#a87c2e" },
+  { key: "earlier",   label: "Earlier",   color: "#8a8278" },
 ];
 
 function postedBucket(iso) {
