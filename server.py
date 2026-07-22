@@ -508,7 +508,7 @@ class AnalyzeRequest(BaseModel):
     min_score: float = 0.3
     skip_scored: bool = True
     archive_below: float = 0.1  # auto-archive jobs scoring below this (LLM mode only)
-    min_keyword_score: float = 0.10  # skip LLM if keyword pre-filter score < this
+    min_keyword_score: float = 0.3  # skip LLM if keyword pre-filter score < this
     direction: Optional[str] = None
     concurrency: int = 10
 
