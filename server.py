@@ -66,7 +66,7 @@ def get_presets():
 
 # ── DB helpers ─────────────────────────────────────────────────────────────────
 
-def get_jobs_query(status: str = "all", q: str = "", direction: str = "all", min_stars: int = 0):
+def get_jobs_query(status: str = "all", q: str = "", direction: str = "all", min_stars: int = 0, source: str = "all"):
     from db.session import get_session
     from db.models import Job
     from sqlalchemy import or_
@@ -77,6 +77,8 @@ def get_jobs_query(status: str = "all", q: str = "", direction: str = "all", min
             query = query.filter(Job.status == status)
         if direction != "all":
             query = query.filter(or_(Job.direction == direction, Job.direction.is_(None)))
+        if source != "all":
+            query = query.filter(Job.source == source)
         if q:
             query = query.filter(
                 or_(
@@ -115,10 +117,10 @@ def get_jobs_query(status: str = "all", q: str = "", direction: str = "all", min
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @app.get("/jobs")
-def list_jobs(status: str = "all", q: str = "", direction: str = "all", min_stars: int = 0):
+def list_jobs(status: str = "all", q: str = "", direction: str = "all", min_stars: int = 0, source: str = "all"):
     from db.session import init_db
     init_db()
-    return get_jobs_query(status, q, direction, min_stars)
+    return get_jobs_query(status, q, direction, min_stars, source)
 
 
 @app.get("/stats")

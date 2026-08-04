@@ -492,6 +492,7 @@ export default function App() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterText, setFilterText] = useState("");
   const [filterMinStars, setFilterMinStars] = useState(0);
+  const [filterSource, setFilterSource] = useState("all");
   const [coverLetter, setCoverLetter] = useState("");
   const [coverLang, setCoverLang] = useState("en");
   const [threshold, setThreshold] = useState(10); // percent — shared by archive/purge/filter/lookup
@@ -517,13 +518,13 @@ export default function App() {
 
   const fetchJobs = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/jobs?status=${filterStatus}&q=${encodeURIComponent(filterText)}&direction=${direction}&min_stars=${filterMinStars}`);
+      const r = await fetch(`${API}/jobs?status=${filterStatus}&q=${encodeURIComponent(filterText)}&direction=${direction}&min_stars=${filterMinStars}&source=${filterSource}`);
       if (r.ok) { setJobs(await r.json()); setBackendOk(true); }
     } catch {
       if (backendOk) addLog("✗ Backend offline — run: python server.py");
       setBackendOk(false);
     }
-  }, [filterStatus, filterText, direction, filterMinStars, addLog, backendOk]);
+  }, [filterStatus, filterText, direction, filterMinStars, filterSource, addLog, backendOk]);
 
   const fetchStats = useCallback(async () => {
     try { const r=await fetch(`${API}/stats?threshold=${threshold/100}`); if(r.ok) setStats(await r.json()); } catch {}
@@ -1058,6 +1059,24 @@ export default function App() {
                         color:filterMinStars===n?"#a87c2e":"#a8a098",
                         cursor:"pointer", fontFamily:"monospace", fontWeight:700, lineHeight:1,
                       }}>{n===0?"ALL":"★".repeat(n)}</button>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:4}}>
+                    <button onClick={()=>setFilterSource("all")} style={{
+                      fontSize:8,padding:"2px 7px",borderRadius:3,border:"1px solid",
+                      borderColor:filterSource==="all"?"#4d7ab555":"#d4cfc4",
+                      background:filterSource==="all"?"#4d7ab512":"transparent",
+                      color:filterSource==="all"?"#4d7ab5":"#8a8278",
+                      cursor:"pointer",fontFamily:"monospace",letterSpacing:"0.05em",fontWeight:700,
+                    }}>ALL SOURCES</button>
+                    {SOURCES.map(s=>(
+                      <button key={s} onClick={()=>setFilterSource(s)} style={{
+                        fontSize:8,padding:"2px 6px",borderRadius:3,border:"1px solid",
+                        borderColor:filterSource===s?"#4d7ab555":"#d4cfc4",
+                        background:filterSource===s?"#4d7ab512":"transparent",
+                        color:filterSource===s?"#4d7ab5":"#8a8278",
+                        cursor:"pointer",letterSpacing:"0.04em",fontFamily:"monospace",
+                      }}>{s.replace(/\.(ch|com)/,"")}</button>
                     ))}
                   </div>
                 </div>
