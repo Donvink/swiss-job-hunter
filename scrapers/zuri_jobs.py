@@ -23,6 +23,7 @@ class ZuriJobsScraper(BaseScraper):
     async def scrape(
         self, keyword: str, location: str = "Zürich", max_pages: int = 5
     ) -> AsyncGenerator[ScrapedJob, None]:
+        yielded = 0
         for page in range(1, max_pages + 1):
             params: dict = {"q": keyword}
             if location:
@@ -34,7 +35,7 @@ class ZuriJobsScraper(BaseScraper):
             try:
                 resp = await self._fetch(url)
             except Exception as exc:
-                print(f"[züri.jobs] page {page} error: {exc}")
+                self._page_error(page, exc, yielded)
                 break
 
             soup = BeautifulSoup(resp.text, "lxml")
@@ -43,10 +44,12 @@ class ZuriJobsScraper(BaseScraper):
             jobs_from_ld = list(self._parse_json_ld(soup))
             if jobs_from_ld:
                 for job in jobs_from_ld:
+                    yielded += 1
                     yield job
             else:
                 # Fallback to HTML parsing
                 for job in self._parse_html(soup):
+                    yielded += 1
                     yield job
 
             # Pagination: check if next page exists
@@ -120,7 +123,7 @@ class ZuriJobsScraper(BaseScraper):
         if not job_url or not job_url.startswith("http"):
             return None
         try:
-            resp = await self._fetch(job_url)
+            resp = await self._fetch(job_url, allow_status={404, 410})
             if resp.status_code in (404, 410):
                 return ()  # type: ignore
             soup = BeautifulSoup(resp.text, "lxml")

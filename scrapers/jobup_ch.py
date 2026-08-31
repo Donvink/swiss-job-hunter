@@ -25,6 +25,7 @@ class JobupChScraper(BaseScraper):
     async def scrape(
         self, keyword: str, location: str = "Genève", max_pages: int = 5
     ) -> AsyncGenerator[ScrapedJob, None]:
+        yielded = 0
         for page in range(1, max_pages + 1):
             params = {
                 "term": keyword,
@@ -39,7 +40,7 @@ class JobupChScraper(BaseScraper):
                 resp = await self._fetch(url, headers=_HEADERS)
                 data = resp.json()
             except Exception as exc:
-                print(f"[jobup.ch] page {page} error: {exc}")
+                self._page_error(page, exc, yielded)
                 break
 
             jobs = data.get("documents", [])
@@ -49,6 +50,7 @@ class JobupChScraper(BaseScraper):
             for doc in jobs:
                 job = self._parse(doc)
                 if job:
+                    yielded += 1
                     yield job
 
             if page >= data.get("numPages", 1):
@@ -95,7 +97,7 @@ class JobupChScraper(BaseScraper):
             else f"https://www.jobup.ch/en/jobs/detail/{source_job_id}/"
         )
         try:
-            resp = await self._fetch(url)
+            resp = await self._fetch(url, allow_status={404, 410})
             if resp.status_code in (404, 410):
                 return ()  # type: ignore
             soup = BeautifulSoup(resp.text, "lxml")

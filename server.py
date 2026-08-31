@@ -300,6 +300,7 @@ async def run_search(req: SearchRequest):
             except Exception as e:
                 partial = f", saved {new_count} before failure" if new_count else ""
                 await queue.put(f"✗ {source_name} failed{partial}: {str(e)[:120]}")
+                failed_sources.append(source_name)
                 return new_count
             if found_count == 0:
                 await queue.put(f"✓ {source_name}: +0 new jobs (scraper returned 0 results)")
@@ -309,6 +310,7 @@ async def run_search(req: SearchRequest):
                 await queue.put(f"✓ {source_name}: +{new_count} new jobs")
             return new_count
 
+        failed_sources: list[str] = []
         for kw_idx, kw in enumerate(kw_list):
             if kw_idx > 0 and linkedin_in_sources:
                 yield f"⏳ LinkedIn cooldown 5s..."
@@ -336,7 +338,13 @@ async def run_search(req: SearchRequest):
             results = await asyncio.gather(*tasks, return_exceptions=True)
             total_new += sum(r for r in results if isinstance(r, int))
 
-        yield f"✓ Done — {total_new} total new jobs"
+        if failed_sources:
+            # A broken source is not a quiet one: name it in the summary so a
+            # dead board cannot hide behind a green "Done".
+            broken = ", ".join(sorted(set(failed_sources)))
+            yield f"✓ Done — {total_new} total new jobs · ✗ failed: {broken}"
+        else:
+            yield f"✓ Done — {total_new} total new jobs"
     return await sse(gen())
 
 

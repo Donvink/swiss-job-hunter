@@ -22,6 +22,7 @@ class MichaelPageScraper(BaseScraper):
     async def scrape(
         self, keyword: str, location: str = "Zürich", max_pages: int = 5
     ) -> AsyncGenerator[ScrapedJob, None]:
+        yielded = 0
         for page in range(max_pages):
             params: dict = {"keywords": keyword}
             if location:
@@ -33,7 +34,7 @@ class MichaelPageScraper(BaseScraper):
             try:
                 resp = await self._fetch(url)
             except Exception as exc:
-                print(f"[michael-page] page {page} error: {exc}")
+                self._page_error(page, exc, yielded)
                 break
 
             soup = BeautifulSoup(resp.text, "lxml")
@@ -44,6 +45,7 @@ class MichaelPageScraper(BaseScraper):
             for item in items:
                 job = self._parse_item(item)
                 if job:
+                    yielded += 1
                     yield job
 
             if len(items) < 10:
@@ -96,7 +98,7 @@ class MichaelPageScraper(BaseScraper):
         if not job_url or not job_url.startswith("http"):
             return None
         try:
-            resp = await self._fetch(job_url)
+            resp = await self._fetch(job_url, allow_status={404, 410})
             if resp.status_code in (404, 410):
                 return ()  # type: ignore
             soup = BeautifulSoup(resp.text, "lxml")

@@ -58,6 +58,7 @@ class SwissDevJobsScraper(BaseScraper):
             )
             page = await context.new_page()
 
+            yielded = 0
             try:
                 await page.goto(search_url, wait_until="networkidle", timeout=30_000)
                 await page.wait_for_timeout(1000)
@@ -69,10 +70,11 @@ class SwissDevJobsScraper(BaseScraper):
                 for card in cards:
                     job = await self._parse_card(card)
                     if job:
+                        yielded += 1
                         yield job
 
             except Exception as exc:
-                print(f"[swissdevjobs] error: {exc}")
+                self._page_error(1, exc, yielded)
             finally:
                 await browser.close()
 

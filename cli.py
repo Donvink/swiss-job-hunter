@@ -61,6 +61,7 @@ async def _search(
         console.print(f"[dim]Semantic dedup index: {n} jobs loaded[/dim]")
 
     total_new = 0
+    failed: list[tuple[str, str]] = []
 
     for source_name in active_sources:
         scraper_cls = SCRAPER_REGISTRY.get(source_name)
@@ -71,40 +72,53 @@ async def _search(
         console.print(f"[bold]→ {source_name}[/bold]", end=" ")
         new_count = 0
 
-        async with scraper_cls() as scraper:
-            async for scraped in scraper.scrape(keyword, location, max_pages):
-                # Stage 1: exact dedup
-                if is_exact_duplicate(scraped.title, scraped.company, scraped.location):
-                    continue
-
-                # Stage 2: semantic dedup
-                if sem_dedup:
-                    text = f"{scraped.title} {scraped.company} {scraped.location}"
-                    is_dup, sim = sem_dedup.is_duplicate(text)
-                    if is_dup:
+        try:
+            async with scraper_cls() as scraper:
+                async for scraped in scraper.scrape(keyword, location, max_pages):
+                    # Stage 1: exact dedup
+                    if is_exact_duplicate(scraped.title, scraped.company, scraped.location):
                         continue
-                    sem_dedup.add(text)
 
-                # Insert
-                job, created = get_or_create_job(scraped)
-                if created:
-                    # Also save raw record
-                    with get_session() as session:
-                        raw = RawJob(
-                            canonical_id=job.id,
-                            source=scraped.source,
-                            source_job_id=scraped.source_job_id,
-                            url=scraped.url,
-                            raw_html=scraped.raw_html,
-                            raw_json=scraped.raw_json,
-                        )
-                        session.add(raw)
-                    new_count += 1
+                    # Stage 2: semantic dedup
+                    if sem_dedup:
+                        text = f"{scraped.title} {scraped.company} {scraped.location}"
+                        is_dup, sim = sem_dedup.is_duplicate(text)
+                        if is_dup:
+                            continue
+                        sem_dedup.add(text)
+
+                    # Insert
+                    job, created = get_or_create_job(scraped)
+                    if created:
+                        # Also save raw record
+                        with get_session() as session:
+                            raw = RawJob(
+                                canonical_id=job.id,
+                                source=scraped.source,
+                                source_job_id=scraped.source_job_id,
+                                url=scraped.url,
+                                raw_html=scraped.raw_html,
+                                raw_json=scraped.raw_json,
+                            )
+                            session.add(raw)
+                        new_count += 1
+        except Exception as exc:
+            # One broken source must not end the run, and it must not be
+            # reported as +0 either — a dead board is not a quiet one.
+            failed.append((source_name, str(exc)))
+            partial = f" (kept {new_count} scraped before it failed)" if new_count else ""
+            console.print(f"[red]failed{partial}[/red]: {exc}")
+            total_new += new_count
+            continue
 
         console.print(f"[green]+{new_count} new[/green]")
         total_new += new_count
 
     console.print(f"\n[bold]Total new jobs:[/bold] [green]{total_new}[/green]")
+    if failed:
+        console.print(f"[red]Failed sources ({len(failed)}/{len(active_sources)}):[/red]")
+        for name, reason in failed:
+            console.print(f"  [red]✗[/red] {name} — {reason}")
 
 
 # ── enrich ───────────────────────────────────────────────────────────────────
@@ -118,7 +132,7 @@ def enrich(
 
 
 async def _enrich(limit: int, source: str) -> None:
-    from db.models import Job
+    from db.models import Job, JobStatus
     from db.session import get_session
 
     with get_session() as session:
@@ -137,23 +151,46 @@ async def _enrich(limit: int, source: str) -> None:
     to_enrich = [(jid, sjid) for jid, sjid, dlen in job_data if dlen < 1500 and sjid]
     console.print(f"Enriching [cyan]{len(to_enrich)}[/cyan] jobs from {source}...")
 
-    if source == "jobs.ch":
-        from scrapers.jobs_ch import JobsChScraper
-        async with JobsChScraper() as scraper:
-            updated = 0
-            for job_id, source_job_id in to_enrich:
-                desc = await scraper.fetch_full_description(source_job_id)
-                if desc and len(desc) > 100:
-                    with get_session() as session:
-                        job = session.get(Job, job_id)
-                        if job:
-                            job.description = desc
-                    updated += 1
-                    console.print(f"  [green]✓[/green] job {job_id} — {len(desc)} chars")
-                else:
-                    console.print(f"  [dim]– job {job_id} — no detail available[/dim]")
+    if source != "jobs.ch":
+        console.print(
+            f"[yellow]enrich only covers jobs.ch here — use the web UI "
+            f"(/run/enrich) for {source}[/yellow]"
+        )
+        return
 
-    console.print(f"\n✓ Enriched [green]{updated}[/green] jobs")
+    from scrapers.jobs_ch import JobsChScraper
+
+    updated = 0
+    archived = 0
+    async with JobsChScraper() as scraper:
+        for job_id, source_job_id in to_enrich:
+            # fetch_full_description returns (description, canonical_url),
+            # () when the vacancy is gone, or None when the fetch failed.
+            result = await scraper.fetch_full_description(source_job_id)
+            if result == ():
+                with get_session() as session:
+                    job = session.get(Job, job_id)
+                    if job:
+                        job.status = JobStatus.ARCHIVED
+                archived += 1
+                console.print(f"  [dim]– job {job_id} — expired, archived[/dim]")
+            elif result and len(result[0]) > 100:
+                description, canonical = result
+                with get_session() as session:
+                    job = session.get(Job, job_id)
+                    if job:
+                        job.description = description
+                        if canonical:
+                            job.url = canonical
+                updated += 1
+                console.print(f"  [green]✓[/green] job {job_id} — {len(description)} chars")
+            else:
+                console.print(f"  [dim]– job {job_id} — no detail available[/dim]")
+
+    summary = f"\n✓ Enriched [green]{updated}[/green] jobs"
+    if archived:
+        summary += f", archived [yellow]{archived}[/yellow] expired"
+    console.print(summary)
 
 
 # ── analyze ───────────────────────────────────────────────────────────────────

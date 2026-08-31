@@ -11,9 +11,32 @@ from datetime import datetime
 from typing import AsyncGenerator, Optional
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
 from config.settings import settings
+
+
+class ScraperError(RuntimeError):
+    """
+    A source-level failure: the scraper could not deliver results at all.
+
+    Deliberately distinct from "this search matched nothing" — callers report
+    the two differently, so a dead source never looks like an empty result set.
+    """
+
+
+class PermanentHTTPError(ScraperError):
+    """An HTTP status that will not fix itself on a retry."""
+
+    def __init__(self, status_code: int, url: str) -> None:
+        super().__init__(f"HTTP {status_code} for {url}")
+        self.status_code = status_code
+        self.url = url
+
+
+# Endpoint gone, we are blocked, or the request is malformed — retrying these
+# only burns polite-delay seconds to fail the same way.
+PERMANENT_STATUS = frozenset({400, 401, 403, 404, 405, 410, 451})
 
 
 @dataclass
@@ -86,14 +109,45 @@ class BaseScraper(ABC):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_not_exception_type(ScraperError),
         reraise=True,
     )
-    async def _fetch(self, url: str, **kwargs) -> httpx.Response:  # type: ignore[override]
+    async def _fetch(
+        self,
+        url: str,
+        *,
+        allow_status: frozenset[int] | set[int] = frozenset(),
+        **kwargs,
+    ) -> httpx.Response:  # type: ignore[override]
+        """
+        GET `url`, retrying only failures that a retry could plausibly fix.
+
+        `allow_status` lists statuses the caller wants to inspect itself —
+        typically {404, 410} when a missing page is a meaningful answer
+        ("this vacancy is gone") rather than an error.
+        """
         client = await self._get_client()
         await self._polite_delay()
         response = await client.get(url, **kwargs)
+        if response.status_code in allow_status:
+            return response
+        if response.status_code in PERMANENT_STATUS:
+            raise PermanentHTTPError(response.status_code, url)
         response.raise_for_status()
         return response
+
+    def _page_error(self, page: int, exc: Exception, yielded: int) -> None:
+        """
+        Handle a page that could not be fetched or parsed.
+
+        Nothing yielded yet means the source itself is broken — the endpoint
+        moved, we are blocked, or the markup changed — so raise and let the
+        caller say so. Once some jobs are through, a later page failing is just
+        a truncated run: log it and let the caller stop where it is.
+        """
+        if yielded == 0:
+            raise ScraperError(f"{self.source_name}: {exc}") from exc
+        print(f"[{self.source_name}] page {page} error after {yielded} jobs: {exc}")
 
     async def _polite_delay(self) -> None:
         """Random delay to avoid hammering servers."""

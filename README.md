@@ -321,7 +321,7 @@ sjh digest
 
 | Source | Method | Notes |
 |---|---|---|
-| jobs.ch | JSON API + HTML detail | Primary Swiss board |
+| jobs.ch | JSON-LD + HTML detail | Primary Swiss board; run `sjh enrich` after a search to pull the full descriptions |
 | jobscout24.ch | JSON API | Large Swiss generalist board |
 | jobup.ch | JSON API + HTML detail | French-speaking Switzerland |
 | swissdevjobs.ch | HTML / BS4 | IT & software focused |
@@ -330,6 +330,10 @@ sjh digest
 | linkedin.com | HTTP guest API | No login required; set `LINKEDIN_COOKIE` for more results; experience level filter (`f_E`) configurable in UI |
 | michael-page.ch | HTML / BS4 | Executive & specialist roles |
 | indeed.ch | Playwright | JS-rendered; requires Chromium |
+
+A source that breaks — endpoint withdrawn, markup changed, bot-blocked — is
+reported as a failure rather than as an empty result: the CLI lists it under
+"Failed sources" and the web UI names it in the run summary.
 
 ---
 

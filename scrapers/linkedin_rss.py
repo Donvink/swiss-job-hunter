@@ -47,6 +47,7 @@ class LinkedInRssScraper(BaseScraper):
         if self._li_at:
             headers["Cookie"] = f"li_at={self._li_at}"
 
+        yielded = 0
         for page_num in range(max_pages):
             params = {
                 "keywords": keyword,
@@ -62,7 +63,7 @@ class LinkedInRssScraper(BaseScraper):
             try:
                 resp = await self._fetch(url, headers=headers)
             except Exception as exc:
-                print(f"[linkedin] page {page_num + 1} error: {exc}")
+                self._page_error(page_num + 1, exc, yielded)
                 break
 
             jobs = self._parse_page(resp.text)
@@ -70,6 +71,7 @@ class LinkedInRssScraper(BaseScraper):
                 break
 
             for job in jobs:
+                yielded += 1
                 yield job
 
     def _parse_page(self, html: str) -> list[ScrapedJob]:
@@ -133,7 +135,7 @@ class LinkedInRssScraper(BaseScraper):
         api_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
         canonical = f"https://www.linkedin.com/jobs/view/{job_id}/"
         try:
-            resp = await self._fetch(api_url)
+            resp = await self._fetch(api_url, allow_status={404, 410})
             if resp.status_code in (404, 410):
                 return ()  # type: ignore
             soup = BeautifulSoup(resp.text, "lxml")

@@ -25,6 +25,7 @@ class JobScout24Scraper(BaseScraper):
         self, keyword: str, location: str = "Zürich", max_pages: int = 5
     ) -> AsyncGenerator[ScrapedJob, None]:
         seen: set[str] = set()
+        yielded = 0
         for page in range(1, max_pages + 1):
             params: dict = {"q": keyword}
             if location:
@@ -36,7 +37,7 @@ class JobScout24Scraper(BaseScraper):
             try:
                 resp = await self._fetch(url)
             except Exception as exc:
-                print(f"[jobscout24] page {page} error: {exc}")
+                self._page_error(page, exc, yielded)
                 break
 
             soup = BeautifulSoup(resp.text, "lxml")
@@ -60,6 +61,7 @@ class JobScout24Scraper(BaseScraper):
                     job = await self._fetch_detail(detail_url, uuid)
                     if job:
                         new_on_page += 1
+                        yielded += 1
                         yield job
                 except Exception as exc:
                     print(f"[jobscout24] detail {uuid}: {exc}")
@@ -153,7 +155,7 @@ class JobScout24Scraper(BaseScraper):
             else f"{_BASE_URL}/en/job/{source_job_id}/"
         )
         try:
-            resp = await self._fetch(url)
+            resp = await self._fetch(url, allow_status={404, 410})
             if resp.status_code in (404, 410):
                 return ()  # type: ignore
             soup = BeautifulSoup(resp.text, "lxml")

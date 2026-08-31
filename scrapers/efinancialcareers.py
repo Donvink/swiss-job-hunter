@@ -39,6 +39,7 @@ class EFinancialCareersScraper(BaseScraper):
             browser = await pw.chromium.launch(headless=settings.playwright_headless)
             context = await browser.new_context(user_agent=_UA)
             page = await context.new_page()
+            yielded = 0
             try:
                 for page_num in range(1, max_pages + 1):
                     loc_param = f"&location={quote_plus(location)}" if location else ""
@@ -52,8 +53,11 @@ class EFinancialCareersScraper(BaseScraper):
                     await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
                     try:
                         await page.wait_for_selector("[class*='job-card']", timeout=10_000)
-                    except Exception:
-                        break  # no results on this page
+                    except Exception as exc:
+                        # No cards at all on the first page means the layout moved,
+                        # not that the search came back empty.
+                        self._page_error(page_num, exc, yielded)
+                        break
 
                     cards = await page.query_selector_all("[class*='job-card']")
                     if not cards:
@@ -62,6 +66,7 @@ class EFinancialCareersScraper(BaseScraper):
                     for card in cards:
                         job = await self._parse_card(card)
                         if job:
+                            yielded += 1
                             yield job
             finally:
                 await browser.close()

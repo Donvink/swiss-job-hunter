@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from typing import AsyncGenerator, Optional
 from urllib.parse import urlencode
 
-from scrapers.base import BaseScraper, ScrapedJob
+from scrapers.base import BaseScraper, ScrapedJob, ScraperError
 
 _RSS_URL = "https://ch.indeed.com/rss"
 
@@ -31,15 +31,15 @@ class IndeedChScraper(BaseScraper):
             try:
                 resp = await self._fetch(url)
             except Exception as exc:
-                raise RuntimeError(f"indeed.ch RSS fetch failed (page {page_num + 1}): {exc}")
+                raise ScraperError(f"indeed.ch RSS fetch failed (page {page_num + 1}): {exc}")
 
             ct = resp.headers.get("content-type", "")
             if resp.status_code != 200 or "Security Check" in resp.text:
-                raise RuntimeError(
+                raise ScraperError(
                     f"indeed.ch blocked by Cloudflare (HTTP {resp.status_code})"
                 )
             if "xml" not in ct and not resp.text.strip().startswith("<"):
-                raise RuntimeError(
+                raise ScraperError(
                     f"indeed.ch RSS returned unexpected content-type={ct!r}; "
                     f"preview: {resp.text[:120]!r}"
                 )
@@ -47,11 +47,11 @@ class IndeedChScraper(BaseScraper):
             try:
                 root = ET.fromstring(resp.text)
             except ET.ParseError as exc:
-                raise RuntimeError(f"indeed.ch XML parse failed: {exc}; preview: {resp.text[:120]!r}")
+                raise ScraperError(f"indeed.ch XML parse failed: {exc}; preview: {resp.text[:120]!r}")
 
             items = root.findall(".//item")
             if not items:
-                raise RuntimeError(
+                raise ScraperError(
                     f"indeed.ch RSS: valid XML but 0 <item> elements; "
                     f"root tag={root.tag!r}; preview={resp.text[:200]!r}"
                 )
@@ -64,7 +64,7 @@ class IndeedChScraper(BaseScraper):
                     yield job
             if parsed == 0:
                 first = items[0]
-                raise RuntimeError(
+                raise ScraperError(
                     f"indeed.ch RSS: {len(items)} items found but all failed to parse; "
                     f"first item tags={[c.tag for c in first]!r}; "
                     f"title={first.findtext('title')!r}"
