@@ -495,7 +495,14 @@ export default function App() {
   const [filterSource, setFilterSource] = useState("all");
   const [coverLetter, setCoverLetter] = useState("");
   const [coverLang, setCoverLang] = useState("en");
-  const [threshold, setThreshold] = useState(10); // percent — shared by archive/purge/filter/lookup
+  // Two separate numbers. `minMatch` only filters what the list shows.
+  // `opsThreshold` is what gets sent to the backend as archive_below / max_score /
+  // min_score by SCORE (LLM), RESCORE ALL, LOOKUP COMPANIES, CHECK LINKS and PURGE.
+  // These used to be one state, so raising the filter to read the list also armed
+  // PURGE to delete everything below that score.
+  const [minMatch, setMinMatch] = useState(0);        // view filter only, never sent
+  const [opsThreshold, setOpsThreshold] = useState(10); // sent to destructive endpoints
+  const [sortBy, setSortBy] = useState("posted");     // posted | score | company
   const [searchPages, setSearchPages] = useState(3);
   const [keywordPresets, setKeywordPresets] = useState({});
   const [linkedinTimeRange, setLinkedinTimeRange] = useState("r604800");
@@ -527,8 +534,8 @@ export default function App() {
   }, [filterStatus, filterText, direction, filterMinStars, filterSource, addLog, backendOk]);
 
   const fetchStats = useCallback(async () => {
-    try { const r=await fetch(`${API}/stats?threshold=${threshold/100}`); if(r.ok) setStats(await r.json()); } catch {}
-  }, [threshold]);
+    try { const r=await fetch(`${API}/stats?threshold=${minMatch/100}`); if(r.ok) setStats(await r.json()); } catch {}
+  }, [minMatch]);
 
   useEffect(() => { fetchJobs(); fetchStats(); }, [fetchJobs, fetchStats]);
 
@@ -660,13 +667,13 @@ export default function App() {
       for (const src of (enrichSources.length ? enrichSources : [searchSrc[0]||"jobs.ch"])) {
         await runStream("run/enrich", {limit:9999, source:src, rescore_llm:false, direction:dir}, `enrich-${src}`);
       }
-      await runStream("run/analyze", {limit:9999, llm:true, archive_below:threshold/100, direction:dir}, "analyze-llm");
+      await runStream("run/analyze", {limit:9999, llm:true, archive_below:opsThreshold/100, direction:dir}, "analyze-llm");
       addLog("━━━ PIPELINE DONE ━━━");
     } finally {
       pipelineRunning.current = false;
       setLoading(p=>({...p, pipeline:false}));
     }
-  }, [searchKws, searchKwInput, searchSrc, searchLoc, searchPages, direction, linkedinTimeRange, linkedinExpLevel, threshold, runStream, addLog]);
+  }, [searchKws, searchKwInput, searchSrc, searchLoc, searchPages, direction, linkedinTimeRange, linkedinExpLevel, opsThreshold, runStream, addLog]);
 
   const runPipelineKeyword = useCallback(async () => {
     if (pipelineRunning.current) { addLog("✗ Pipeline already running"); return; }
@@ -740,17 +747,31 @@ export default function App() {
 
   const visible = jobs.filter(j=>
     (filterStatus==="all"||j.status===filterStatus) &&
-    (threshold===0 || (j.match_score!=null && j.match_score*100 >= threshold))
+    (minMatch===0 || (j.match_score!=null && j.match_score*100 >= minMatch))
   );
 
-  const visibleGroups = POSTED_BUCKETS
-    .map(b => ({
-      ...b,
-      jobs: visible
-        .filter(j => postedBucket(j.posted_at) === b.key)
-        .sort((a,b2) => (b2.match_score ?? -1) - (a.match_score ?? -1)),
-    }))
-    .filter(g => g.jobs.length > 0);
+  // Date bucketing is now one sort mode among three. Grouping by posted date and
+  // only sorting by score *within* a bucket meant a 25% job posted today sat above
+  // a 93% job posted yesterday, with no way to see the best matches first.
+  const byScore = (a,b) => (b.match_score ?? -1) - (a.match_score ?? -1);
+
+  const visibleGroups = sortBy === "posted"
+    ? POSTED_BUCKETS
+        .map(b => ({
+          ...b,
+          jobs: visible.filter(j => postedBucket(j.posted_at) === b.key).sort(byScore),
+        }))
+        .filter(g => g.jobs.length > 0)
+    : [{
+        key: sortBy,
+        label: sortBy === "score" ? "Best match first" : "By company",
+        color: "#8a8278",
+        jobs: [...visible].sort(
+          sortBy === "score"
+            ? byScore
+            : (a,b) => (a.company||"").localeCompare(b.company||"") || byScore(a,b)
+        ),
+      }].filter(g => g.jobs.length > 0);
 
   const Tab = ({id,label,active,onClick}) => (
     <button onClick={onClick} style={{
@@ -960,7 +981,7 @@ export default function App() {
                       loading={loading.pipeline}
                       disabled={loading.pipelineKw||loading.pipeline||loading.search||loading["analyze-llm"]||Object.keys(loading).some(k=>k.startsWith("enrich")&&loading[k])}
                       label="SEARCH + SCORE (KEYWORD + LLM)" icon="⚡" color="#9070c8"/>
-                    <Btn onClick={()=>runStream("run/check-links",{auto_archive:true,concurrency:10,min_score:threshold/100},"check-links")}
+                    <Btn onClick={()=>runStream("run/check-links",{auto_archive:true,concurrency:10,min_score:opsThreshold/100},"check-links")}
                       loading={loading["check-links"]} label="CHECK DEAD LINKS" icon="🔗"
                       color="#c06838" disabled={!stats.total}/>
                   </div>
@@ -989,20 +1010,29 @@ export default function App() {
                     <Btn onClick={()=>runStream("run/analyze",{limit:9999,llm:false,direction:direction==="all"?null:direction},"analyze")}
                       loading={loading.analyze} label="SCORE (KEYWORD)" icon="⚡"
                       color="#a87c2e" disabled={!stats.total}/>
-                    <Btn onClick={()=>runStream("run/analyze",{limit:9999,llm:true,archive_below:threshold/100,direction:direction==="all"?null:direction},"analyze-llm")}
+                    <Btn onClick={()=>runStream("run/analyze",{limit:9999,llm:true,archive_below:opsThreshold/100,direction:direction==="all"?null:direction},"analyze-llm")}
                       loading={loading["analyze-llm"]} label="SCORE (LLM)" icon="🧠"
                       color="#9070c8" disabled={!stats.total}/>
                   </div>
-                  <Btn onClick={()=>runStream("run/analyze",{llm:true,skip_scored:false,archive_below:threshold/100,concurrency:10,direction:direction==="all"?null:direction},"rescore-all")}
+                  <Btn onClick={()=>runStream("run/analyze",{llm:true,skip_scored:false,archive_below:opsThreshold/100,concurrency:10,direction:direction==="all"?null:direction},"rescore-all")}
                     loading={loading["rescore-all"]} label="RESCORE ALL" icon="🔄"
                     color="#6464a8" disabled={!stats.total}/>
 
+                  <div style={{display:"flex",alignItems:"center",gap:5,margin:"4px 0 2px",paddingLeft:2}}>
+                    <span style={{fontSize:9,color:"#b0a898",fontFamily:"monospace",letterSpacing:"0.05em"}}>ARCHIVE / PURGE BELOW</span>
+                    <input type="number" min={0} max={100} step={5} value={opsThreshold}
+                      onChange={e=>{const v=Math.max(0,Math.min(100,parseInt(e.target.value)||0));setOpsThreshold(v);}}
+                      title="sent to the backend as archive_below / max_score / min_score by the buttons in this panel. Separate from the list filter."
+                      style={{...inp,width:52,textAlign:"center",fontSize:10}}/>
+                    <span style={{fontSize:9,color:"#b0a898",fontFamily:"monospace"}}>%</span>
+                  </div>
+
                   <PipeGroup label="MAINTENANCE"/>
-                  <Btn onClick={()=>runStream("run/company-lookup",{min_score:threshold/100},"company-lookup")}
+                  <Btn onClick={()=>runStream("run/company-lookup",{min_score:opsThreshold/100},"company-lookup")}
                     loading={loading["company-lookup"]} label="LOOKUP COMPANIES" icon="🏢"
                     color="#3d8a9a" disabled={!stats.total}/>
                   <div style={{fontSize:9,color:"#b0a898",fontFamily:"monospace",marginTop:-1,paddingLeft:2}}>
-                    uses threshold ≥ {threshold}% (set in FILTER below)
+                    uses threshold ≥ {opsThreshold}% (set above)
                   </div>
 
                   <div style={{height:1,background:"#d4cfc4",margin:"6px 0 2px"}}/>
@@ -1013,11 +1043,11 @@ export default function App() {
                     <div style={{flex:1,height:1,background:"#d4cfc4"}}/>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    <Btn onClick={()=>runStream("run/purge-archived",{max_score:threshold/100,dry_run:false},"purge")}
+                    <Btn onClick={()=>runStream("run/purge-archived",{max_score:opsThreshold/100,dry_run:false},"purge")}
                       loading={loading["purge"]} label="PURGE" icon="🗑" small color="#b84848"/>
                   </div>
                   <div style={{fontSize:9,color:"#b0a898",fontFamily:"monospace",marginTop:-1,paddingLeft:2}}>
-                    permanently deletes new/analyzed/archived jobs scoring below {threshold}% — no undo
+                    permanently deletes new/analyzed/archived jobs scoring below {opsThreshold}% — no undo
                   </div>
                 </div>
 
@@ -1043,11 +1073,28 @@ export default function App() {
                       placeholder="search title / company..." style={{...inp,fontSize:10,flex:1}}/>
                     <div style={{display:"flex",alignItems:"center",gap:3,flexShrink:0}}>
                       <span style={{fontSize:9,color:"#a8a098",fontFamily:"monospace",whiteSpace:"nowrap"}}>≥</span>
-                      <input type="number" min={0} max={100} step={5} value={threshold}
-                        onChange={e=>{const v=Math.max(0,Math.min(100,parseInt(e.target.value)||0));setThreshold(v);}}
-                        title="score threshold % — used by filter, archive, purge, lookup, check-links" style={{...inp,width:52,textAlign:"center",fontSize:10}}/>
+                      <input type="number" min={0} max={100} step={5} value={minMatch}
+                        onChange={e=>{const v=Math.max(0,Math.min(100,parseInt(e.target.value)||0));setMinMatch(v);}}
+                        title="hide jobs scoring below this — affects the list only, never sent to the backend"
+                        style={{...inp,width:52,textAlign:"center",fontSize:10}}/>
                       <span style={{fontSize:9,color:"#a8a098",fontFamily:"monospace"}}>%</span>
                     </div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:5}}>
+                    <span style={{fontSize:9,color:"#a8a098",fontFamily:"monospace",letterSpacing:"0.05em"}}>SORT</span>
+                    {[["score","MATCH"],["posted","DATE"],["company","COMPANY"]].map(([key,label])=>(
+                      <button key={key} onClick={()=>setSortBy(key)} title={
+                        key==="score" ? "best match first, across all dates"
+                        : key==="posted" ? "group by posting date, best match within each group"
+                        : "alphabetical by company, best match within each"
+                      } style={{
+                        fontSize:8,padding:"2px 7px",borderRadius:3,border:"1px solid",
+                        borderColor:sortBy===key?"#4d8a6855":"#d4cfc4",
+                        background:sortBy===key?"#4d8a6812":"transparent",
+                        color:sortBy===key?"#4d8a68":"#8a8278",
+                        cursor:"pointer",fontFamily:"monospace",letterSpacing:"0.05em",fontWeight:700,
+                      }}>{label}</button>
+                    ))}
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:4}}>
                     <span style={{fontSize:9,color:"#a8a098",fontFamily:"monospace"}}>★≥</span>
