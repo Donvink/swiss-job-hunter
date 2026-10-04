@@ -371,7 +371,7 @@ function Timeline({ jobId, onRefresh }) {
 
 // ── Tracker board ─────────────────────────────────────────────────────────────
 
-function TrackerBoard({ onSelectJob, onChanged }) {
+function TrackerBoard({ onSelectJob, onChanged, onChangeFailed }) {
   const [items, setItems] = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [dragId, setDragId]   = useState(null);   // card being dragged
@@ -411,6 +411,7 @@ function TrackerBoard({ onSelectJob, onChanged }) {
     } catch {
       // put the card back; no reload, the local state already matches the server
       setItems(prev => prev.map(j => j.id === jobId ? { ...j, status: job.status } : j));
+      onChangeFailed?.(jobId, status);
     }
   };
 
@@ -957,6 +958,7 @@ export default function App() {
           {mainTab==="tracker"
             ? <TrackerBoard
                 onSelectJob={j=>{setSelected(j);setMainTab("board");}}
+                onChangeFailed={(jobId,status)=>addLog(`✗ #${jobId} → ${status} failed, moved back`)}
                 onChanged={(jobId,status)=>{
                   setJobs(prev=>prev.map(j=>j.id===jobId?{...j,status}:j));
                   setSelected(prev=>prev?.id===jobId?{...prev,status}:prev);
