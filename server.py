@@ -534,7 +534,7 @@ async def run_analyze(req: AnalyzeRequest):
             fast_score, llm_score, load_cv_text, load_cv_keywords,
             cv_path_for, resolve_direction,
         )
-        from db.models import Job, JobStatus
+        from db.models import Job, JobStatus, USER_OWNED_STATUSES
         from db.session import get_session
 
         direction = resolve_direction(req.direction)
@@ -591,7 +591,8 @@ async def run_analyze(req: AnalyzeRequest):
                                 if job:
                                     job.match_score = kw_result.score
                                     job.match_explanation = f"[keyword pre-filter] {kw_result.explanation}"
-                                    job.status = JobStatus.ARCHIVED
+                                    if job.status not in USER_OWNED_STATUSES:
+                                        job.status = JobStatus.ARCHIVED
                             skipped += 1
                             await queue.put(f"– #{job_id} {kw_result.score:.0%} (skipped) — {title[:45]}")
                         else:
@@ -602,12 +603,17 @@ async def run_analyze(req: AnalyzeRequest):
                                     job.match_score = result.score
                                     job.match_explanation = result.explanation
                                     if result.score >= threshold:
-                                        job.status = JobStatus.SHORTLISTED
                                         shortlisted += 1
-                                    elif result.score < req.archive_below:
-                                        job.status = JobStatus.ARCHIVED
-                                    else:
-                                        job.status = JobStatus.ANALYZED
+                                    # Score and explanation are refreshed for every
+                                    # job; status is only reassigned for rows the
+                                    # pipeline owns.
+                                    if job.status not in USER_OWNED_STATUSES:
+                                        if result.score >= threshold:
+                                            job.status = JobStatus.SHORTLISTED
+                                        elif result.score < req.archive_below:
+                                            job.status = JobStatus.ARCHIVED
+                                        else:
+                                            job.status = JobStatus.ANALYZED
                             score_pct = f"{result.score:.0%}"
                             icon = "⭐" if result.score >= req.min_score else ("✗" if result.score < req.archive_below else "·")
                             await queue.put(f"{icon} #{job_id} {score_pct} — {title[:45]}")
@@ -635,7 +641,9 @@ async def run_analyze(req: AnalyzeRequest):
                         if job:
                             job.match_score = result.score
                             job.match_explanation = result.explanation
-                            job.status = JobStatus.SHORTLISTED if result.score >= threshold else JobStatus.ANALYZED
+                            if job.status not in USER_OWNED_STATUSES:
+                                job.status = (JobStatus.SHORTLISTED if result.score >= threshold
+                                              else JobStatus.ANALYZED)
                             if result.score >= threshold:
                                 shortlisted += 1
                     score_pct = f"{result.score:.0%}"
@@ -669,7 +677,7 @@ async def run_check_links(req: CheckLinksRequest):
         from db.models import Job, JobStatus
         from db.session import get_session
 
-        _safe_statuses = {JobStatus.APPLIED, JobStatus.INTERVIEWING, JobStatus.OFFER, JobStatus.REJECTED}
+        from db.models import USER_OWNED_STATUSES
         _ua = (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -729,7 +737,7 @@ async def run_check_links(req: CheckLinksRequest):
                             if req.auto_archive:
                                 with get_session() as session:
                                     job = session.get(Job, job_id)
-                                    if job and job.status not in _safe_statuses:
+                                    if job and job.status not in USER_OWNED_STATUSES:
                                         job.status = JobStatus.ARCHIVED
                             await queue.put(f"✗ #{job_id} {resp.status_code} — {title[:50]} @ {company[:25]}")
                     except (_httpx.TimeoutException, _httpx.ConnectError, _httpx.RemoteProtocolError,
@@ -1060,8 +1068,8 @@ def mark_viewed(job_id: int):
         if not job:
             raise HTTPException(404, "Job not found")
         # Only upgrade status, never downgrade (don't overwrite applied/interview etc.)
-        upgradeable = {JobStatus.NEW, JobStatus.ANALYZED, JobStatus.SHORTLISTED}
-        if job.status in upgradeable:
+        from db.models import PIPELINE_OWNED_STATUSES
+        if job.status in PIPELINE_OWNED_STATUSES:
             job.status = JobStatus.VIEWED
             job.viewed_at = datetime.utcnow()
             session.add(JobEvent(

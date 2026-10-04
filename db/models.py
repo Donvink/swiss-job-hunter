@@ -32,6 +32,22 @@ class JobStatus(str, PyEnum):
     ARCHIVED     = "archived"
 
 
+# Statuses that record a decision the user made. Automated passes may refresh a
+# job's score and explanation but must never write `status` on these rows, or the
+# tracker silently loses the application history it exists to hold.
+USER_OWNED_STATUSES = frozenset({
+    JobStatus.CONSIDERING, JobStatus.APPLIED,
+    JobStatus.INTERVIEWING, JobStatus.OFFER, JobStatus.REJECTED,
+})
+
+# The complement the pipeline is free to move between. VIEWED and ARCHIVED are in
+# neither set: VIEWED is not a decision, and ARCHIVED should not be resurrected
+# by opening a listing.
+PIPELINE_OWNED_STATUSES = frozenset({
+    JobStatus.NEW, JobStatus.ANALYZED, JobStatus.SHORTLISTED,
+})
+
+
 class ApplicationStatus(str, PyEnum):
     PENDING        = "pending"
     SENT           = "sent"
