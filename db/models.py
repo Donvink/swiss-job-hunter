@@ -104,6 +104,9 @@ class Job(Base):
     match_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     match_explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     user_stars: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1-5, manual interest rating
+    # True when a person archived this job rather than the pipeline. The tracker
+    # keeps those on the board so a dismissed card can be dragged back out.
+    archived_by_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # Tracking timestamps
     viewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

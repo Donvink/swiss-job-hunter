@@ -199,6 +199,10 @@ def update_status(job_id: int, body: dict):
         if not job:
             raise HTTPException(404, "Job not found")
         job.status = s
+        if s == JobStatus.ARCHIVED:
+            # Distinguishes "the user dismissed this" from the pipeline archiving
+            # it, so the tracker can keep the card around to be dragged back out.
+            job.archived_by_user = True
     return {"ok": True}
 
 
@@ -1279,7 +1283,9 @@ def get_tracker():
             .filter(or_(
                 Job.status.in_(active_statuses),
                 and_(Job.status == JobStatus.ARCHIVED,
-                     or_(Job.viewed_at.isnot(None), Job.applied_at.isnot(None))),
+                     or_(Job.archived_by_user.is_(True),
+                         Job.viewed_at.isnot(None),
+                         Job.applied_at.isnot(None))),
             ))
             .order_by(Job.updated_at.desc())
             .all()

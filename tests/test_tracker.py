@@ -87,3 +87,29 @@ def test_a_card_can_be_dropped_into_archived(client):
 
     # still listed, because it was handled — the card stays draggable
     assert _tracker(client)[job_id] == "archived"
+
+
+def test_a_card_without_timestamps_survives_being_archived(client):
+    """
+    A job can reach CONSIDERING without ever being opened in the UI — set through
+    the API, or by an earlier version. Dropping it into ARCHIVED must not make it
+    vanish from the board, or it cannot be dragged back out.
+    """
+    job_id = _add(JobStatus.CONSIDERING, title="no-timestamps")
+    assert job_id in _tracker(client)
+
+    r = client.patch(f"/jobs/{job_id}/status", json={"status": "archived"})
+    assert r.status_code == 200
+
+    assert _tracker(client)[job_id] == "archived", (
+        "a dropped card disappeared and can no longer be dragged back"
+    )
+
+
+def test_pipeline_archived_jobs_are_not_flagged(client):
+    """The flag must only be set by a person, or the column fills with rejects."""
+    job_id = _add(JobStatus.ARCHIVED, title="auto-archived-no-flag")
+    assert job_id not in _tracker(client)
+
+    with db_session.get_session() as session:
+        assert session.get(Job, job_id).archived_by_user is False

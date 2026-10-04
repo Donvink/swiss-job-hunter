@@ -375,6 +375,8 @@ function TrackerBoard({ onSelectJob, onChanged }) {
   // "viewed" is deliberately absent: it is set by opening a listing, not by
   // deciding anything, so it is browsing history rather than a pipeline stage.
   const cols = ["considering","applied","interviewing","offer","rejected","archived"];
+  // Columns a job leaves the funnel through — excluded from the "active" count.
+  const EXIT_COLS = ["rejected","archived"];
   const byStatus = Object.fromEntries(cols.map(c => [c, items.filter(j=>j.status===c)]));
 
   const fmt = iso => iso ? new Date(iso).toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"}) : "—";
@@ -393,10 +395,11 @@ function TrackerBoard({ onSelectJob, onChanged }) {
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       onChanged?.(jobId, status);
+      load();
     } catch {
+      // put the card back; no reload, the local state already matches the server
       setItems(prev => prev.map(j => j.id === jobId ? { ...j, status: job.status } : j));
     }
-    load();
   };
 
   return (
@@ -409,7 +412,11 @@ function TrackerBoard({ onSelectJob, onChanged }) {
           PROGRESS TRACKER
         </span>
         <span style={{fontSize:10,color:"#c4beb0"}}>·</span>
-        <span style={{fontSize:10,color:"#8a8278"}}>{items.length} active</span>
+        <span style={{fontSize:10,color:"#8a8278"}}>
+          {items.filter(j=>!EXIT_COLS.includes(j.status)).length} active
+        </span>
+        <span style={{fontSize:10,color:"#c4beb0"}}>·</span>
+        <span style={{fontSize:10,color:"#8a8278"}}>{items.length} total</span>
         <span style={{fontSize:10,color:"#c4beb0"}}>·</span>
         <span style={{fontSize:10,color:"#a8a098"}}>drag a card between columns to change its status</span>
         <div style={{flex:1}}/>
