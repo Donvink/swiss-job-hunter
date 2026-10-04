@@ -1258,17 +1258,29 @@ def get_tracker():
     Return all jobs that have been interacted with (viewed or beyond),
     sorted by last activity, for the tracker board.
     """
+    from sqlalchemy import and_, or_
     from db.session import get_session
     from db.models import Job, JobStatus, Application
+    # VIEWED is excluded on purpose: it is assigned by opening a listing, so it
+    # records browsing rather than a decision and does not belong on a board whose
+    # columns are pipeline stages.
     active_statuses = [
-        JobStatus.VIEWED, JobStatus.CONSIDERING, JobStatus.APPLIED,
+        JobStatus.CONSIDERING, JobStatus.APPLIED,
         JobStatus.INTERVIEWING, JobStatus.OFFER,
         JobStatus.REJECTED,
     ]
     with get_session() as session:
+        # ARCHIVED is included so the board has somewhere to drop a dismissed card,
+        # but only for jobs the user actually handled. Most archived rows are
+        # pipeline rejects that were never opened — 829 against 5 on a real
+        # database — and listing those would bury the column.
         jobs = (
             session.query(Job)
-            .filter(Job.status.in_(active_statuses))
+            .filter(or_(
+                Job.status.in_(active_statuses),
+                and_(Job.status == JobStatus.ARCHIVED,
+                     or_(Job.viewed_at.isnot(None), Job.applied_at.isnot(None))),
+            ))
             .order_by(Job.updated_at.desc())
             .all()
         )
