@@ -132,7 +132,7 @@ def enrich(
 
 
 async def _enrich(limit: int, source: str) -> None:
-    from db.models import Job, JobStatus
+    from db.models import Job, JobStatus, USER_OWNED_STATUSES
     from db.session import get_session
 
     with get_session() as session:
@@ -170,7 +170,7 @@ async def _enrich(limit: int, source: str) -> None:
             if result == ():
                 with get_session() as session:
                     job = session.get(Job, job_id)
-                    if job:
+                    if job and job.status not in USER_OWNED_STATUSES:
                         job.status = JobStatus.ARCHIVED
                 archived += 1
                 console.print(f"  [dim]– job {job_id} — expired, archived[/dim]")
@@ -208,8 +208,10 @@ def analyze(
 
 async def _analyze(limit: int, use_llm: bool, min_score: float, rescore: bool, concurrency: int) -> None:
     import asyncio as _asyncio
-    from analyzer.scorer import fast_score, llm_score, load_cv_text, load_cv_keywords
-    from db.models import Job, JobStatus
+    from analyzer.scorer import (
+        fast_score, is_fallback_keywords, llm_score, load_cv_text, load_cv_keywords,
+    )
+    from db.models import Job, JobStatus, USER_OWNED_STATUSES
     from db.session import get_session
 
     try:
@@ -222,6 +224,9 @@ async def _analyze(limit: int, use_llm: bool, min_score: float, rescore: bool, c
     # when these are not passed, so without this the keyword path scores against
     # a different CV than the one on disk.
     cv_keywords = await load_cv_keywords(cv_text)
+    if not use_llm and is_fallback_keywords(cv_keywords):
+        console.print("[yellow]⚠ Could not extract keywords from your CV — keyword scores use "
+                      "the built-in fallback list, which does not describe your CV[/yellow]")
 
     with get_session() as session:
         q = session.query(Job.id, Job.title, Job.description, Job.status).filter(
@@ -278,11 +283,13 @@ async def _analyze(limit: int, use_llm: bool, min_score: float, rescore: bool, c
                 if j:
                     j.match_score = result.score
                     j.match_explanation = result.explanation
-                    j.status = (
-                        JobStatus.SHORTLISTED if result.score >= min_score else JobStatus.ANALYZED
-                    )
-                    if result.score >= min_score:
-                        shortlisted += 1
+                    # --rescore selects every status; never undo a user's decision.
+                    if j.status not in USER_OWNED_STATUSES:
+                        j.status = (
+                            JobStatus.SHORTLISTED if result.score >= min_score else JobStatus.ANALYZED
+                        )
+                        if result.score >= min_score:
+                            shortlisted += 1
 
     console.print(f"✓ Done. [yellow]{shortlisted}[/yellow] jobs shortlisted (score ≥ {min_score:.0%})")
 

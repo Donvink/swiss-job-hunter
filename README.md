@@ -227,7 +227,7 @@ The pipeline button is protected against double-clicks — a second click while 
 **② PIPELINE**
 - **ENRICH DESCRIPTIONS** — fetches full JDs for jobs that only have a preview snippet
 - **ENRICH + LLM SCORE** — enriches then immediately scores with LLM in one step
-- **SCORE (KEYWORD)** — fast keyword match against your CV, no API cost
+- **SCORE (KEYWORD)** — fast keyword match against your CV. The keywords are extracted from the CV by the LLM once and cached until the CV changes; every score after that is free
 - **SCORE (LLM)** — two-stage: keyword pre-filter first (skills extracted from your CV, cached to `data/cv_keywords_{direction}.json`); jobs below the threshold are archived without an LLM call, the rest get full deep analysis via Claude/DeepSeek
 - **LOOKUP COMPANIES** — generates a short LLM summary for each company, cached
 - **PREVIEW / PURGE** — dry-run or delete scored jobs below a score threshold

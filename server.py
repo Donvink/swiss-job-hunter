@@ -353,6 +353,11 @@ async def run_search(req: SearchRequest):
 DEFAULT_MIN_SCORE = 0.3      # at or above this a job is SHORTLISTED
 DEFAULT_ARCHIVE_BELOW = 0.1  # below this it is ARCHIVED
 
+_FALLBACK_KEYWORDS_WARNING = (
+    "⚠ Could not extract keywords from your CV (is an LLM provider configured?) — "
+    "keyword scores use the built-in fallback list, which does not describe your CV"
+)
+
 
 class EnrichRequest(BaseModel):
     limit: int = 50
@@ -456,8 +461,11 @@ async def run_enrich(req: EnrichRequest):
                         with get_session() as session:
                             job = session.get(Job, job_id)
                             if job:
-                                from db.models import JobStatus
-                                job.status = JobStatus.ARCHIVED
+                                from db.models import JobStatus, USER_OWNED_STATUSES
+                                # A taken-down posting is still an application
+                                # the user is tracking — leave their status alone.
+                                if job.status not in USER_OWNED_STATUSES:
+                                    job.status = JobStatus.ARCHIVED
                         await queue.put(f"– job #{job_id} — expired, auto-archived")
                     else:
                         await queue.put(f"– job #{job_id} — no detail available")
@@ -486,7 +494,7 @@ async def run_enrich(req: EnrichRequest):
 
         if req.rescore_llm and enriched_ids:
             from analyzer.scorer import llm_score, load_cv_text
-            from db.models import JobStatus
+            from db.models import JobStatus, USER_OWNED_STATUSES
             yield f"→ LLM scoring {len(enriched_ids)} newly enriched jobs..."
             try:
                 cv_text = load_cv_text(direction=req.direction or None)
@@ -508,10 +516,11 @@ async def run_enrich(req: EnrichRequest):
                         job = session.get(Job, job_id)
                         if job:
                             job.match_score = result.score
-                            if result.score < DEFAULT_ARCHIVE_BELOW:
-                                job.status = JobStatus.ARCHIVED
-                            elif result.score >= DEFAULT_MIN_SCORE:
-                                job.status = JobStatus.SHORTLISTED
+                            if job.status not in USER_OWNED_STATUSES:
+                                if result.score < DEFAULT_ARCHIVE_BELOW:
+                                    job.status = JobStatus.ARCHIVED
+                                elif result.score >= DEFAULT_MIN_SCORE:
+                                    job.status = JobStatus.SHORTLISTED
                     scored += 1
                     yield f"  🧠 job #{job_id} — {round(result.score * 100)}%"
                 except Exception as e:
@@ -538,7 +547,7 @@ async def run_analyze(req: AnalyzeRequest):
         from asyncio import Queue
         from analyzer.scorer import (
             fast_score, llm_score, load_cv_text, load_cv_keywords,
-            cv_path_for, resolve_direction,
+            cv_path_for, resolve_direction, is_fallback_keywords,
         )
         from db.models import Job, JobStatus, USER_OWNED_STATUSES
         from db.session import get_session
@@ -582,6 +591,8 @@ async def run_analyze(req: AnalyzeRequest):
             # Load dynamic CV keywords once for pre-filter (cached per CV file)
             yield f"→ Loading CV keywords for pre-filter..."
             cv_keywords = await load_cv_keywords(cv_text, direction=direction)
+            if is_fallback_keywords(cv_keywords):
+                yield _FALLBACK_KEYWORDS_WARNING
             yield f"→ Loaded {len(cv_keywords)} keywords, pre-filter threshold: {req.min_keyword_score:.0%}"
 
             queue: Queue = Queue()
@@ -613,14 +624,13 @@ async def run_analyze(req: AnalyzeRequest):
                                 if job:
                                     job.match_score = result.score
                                     job.match_explanation = result.explanation
-                                    if result.score >= threshold:
-                                        shortlisted += 1
                                     # Score and explanation are refreshed for every
                                     # job; status is only reassigned for rows the
                                     # pipeline owns.
                                     if job.status not in USER_OWNED_STATUSES:
                                         if result.score >= threshold:
                                             job.status = JobStatus.SHORTLISTED
+                                            shortlisted += 1
                                         elif result.score < req.archive_below:
                                             job.status = JobStatus.ARCHIVED
                                         else:
@@ -649,7 +659,10 @@ async def run_analyze(req: AnalyzeRequest):
             # which describes one specific CV and scores everyone else's jobs
             # against it.
             cv_keywords = await load_cv_keywords(cv_text, direction=direction)
-            yield f"→ Loaded {len(cv_keywords)} keywords from CV"
+            if is_fallback_keywords(cv_keywords):
+                yield _FALLBACK_KEYWORDS_WARNING
+            else:
+                yield f"→ Loaded {len(cv_keywords)} keywords from CV"
             for job_id, title, description in job_data:
                 try:
                     result = fast_score(cv_text, description or "", compiled=cv_keywords)
@@ -661,8 +674,8 @@ async def run_analyze(req: AnalyzeRequest):
                             if job.status not in USER_OWNED_STATUSES:
                                 job.status = (JobStatus.SHORTLISTED if result.score >= threshold
                                               else JobStatus.ANALYZED)
-                            if result.score >= threshold:
-                                shortlisted += 1
+                                if result.score >= threshold:
+                                    shortlisted += 1
                     score_pct = f"{result.score:.0%}"
                     icon = "⭐" if result.score >= req.min_score else "·"
                     yield f"{icon} #{job_id} {score_pct} — {title[:45]}"
