@@ -123,6 +123,10 @@ OPENROUTER_MODEL=openai/gpt-4o-mini  # any model slug from openrouter.ai/models
 OLLAMA_BASE_URL=http://localhost:11434/v1
 OLLAMA_MODEL=qwen3.6:latest
 LLM_PROVIDER=auto              # auto | anthropic | deepseek | openrouter | ollama
+# Optional — one sentence describing you, prepended to the LLM scoring system
+# prompt. The CV is already in the prompt, so leave this empty unless you want to
+# steer the model (e.g. toward a career change your CV does not show yet).
+CANDIDATE_PERSONA=
 ```
 
 > **LLM routing** — `auto` round-robins between every provider whose key is set.

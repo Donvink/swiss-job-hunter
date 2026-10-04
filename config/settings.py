@@ -57,9 +57,9 @@ class Settings(BaseSettings):
 
     # ── Scoring ────────────────────────────────────────────────────────────────
     # Sentence describing the candidate's profile, fed to the LLM scoring prompt.
-    candidate_persona: str = (
-        "The candidate is a Senior ML/Perception Engineer specializing in autonomous driving."
-    )
+    # Optional. Prepended to the LLM scoring system prompt. Empty by default: the
+    # CV is already in the prompt, and a stale persona here contradicts it.
+    candidate_persona: str = ""
 
     # ── Keyword presets ────────────────────────────────────────────────────────
     # JSON object mapping preset name → list of keywords.
