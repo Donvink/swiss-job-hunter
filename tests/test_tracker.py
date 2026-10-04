@@ -113,3 +113,29 @@ def test_pipeline_archived_jobs_are_not_flagged(client):
 
     with db_session.get_session() as session:
         assert session.get(Job, job_id).archived_by_user is False
+
+
+def test_leaving_archived_clears_the_user_flag(client):
+    """Otherwise a later pipeline re-archive would look like a user decision."""
+    job_id = _add(JobStatus.CONSIDERING, title="archive-then-restore")
+    client.patch(f"/jobs/{job_id}/status", json={"status": "archived"})
+    client.patch(f"/jobs/{job_id}/status", json={"status": "considering"})
+
+    with db_session.get_session() as session:
+        assert session.get(Job, job_id).archived_by_user is False
+
+
+def test_dropping_into_applied_sets_applied_at(client):
+    job_id = _add(JobStatus.CONSIDERING, title="dragged-to-applied")
+    client.patch(f"/jobs/{job_id}/status", json={"status": "applied"})
+
+    with db_session.get_session() as session:
+        assert session.get(Job, job_id).applied_at is not None
+
+
+def test_dropping_into_applied_keeps_an_existing_applied_at(client):
+    job_id = _add(JobStatus.CONSIDERING, title="already-applied", applied=True)
+    client.patch(f"/jobs/{job_id}/status", json={"status": "applied"})
+
+    with db_session.get_session() as session:
+        assert session.get(Job, job_id).applied_at == _WHEN
