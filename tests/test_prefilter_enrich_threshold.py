@@ -7,46 +7,16 @@ judge anything under 400, a job holding a 150-char teaser would be neither
 re-fetched nor scored — stuck permanently rather than "left for the next enrich
 pass". These tests pin the two together.
 """
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, func
-from sqlalchemy.orm import sessionmaker
 
-import analyzer.scorer as scorer
 import db.session as db_session
 import server
-from config.settings import settings
-from db.models import Base, Job, JobStatus
+from db.models import Job, JobStatus
 
 TEASER = "Senior Python Engineer wanted in Zürich. Great team, modern stack. " * 2
 FULL_JD = (
     "We are looking for a Python engineer to work on our Docker based platform. "
     "You will own services end to end. " * 8
 )
-
-
-@pytest.fixture
-def client(tmp_path, monkeypatch):
-    engine = create_engine(
-        f"sqlite:///{tmp_path / 'test.db'}",
-        connect_args={"check_same_thread": False},
-    )
-    Base.metadata.create_all(bind=engine)
-    monkeypatch.setattr(db_session, "engine", engine)
-    monkeypatch.setattr(
-        db_session, "SessionLocal",
-        sessionmaker(bind=engine, autoflush=False, autocommit=False),
-    )
-
-    cv = tmp_path / "cv.txt"
-    cv.write_text("Senior Python engineer. Docker, Kubernetes, FastAPI.\n", encoding="utf-8")
-    monkeypatch.setattr(settings, "cv_text_path", cv)
-
-    async def _keywords(cv_text, direction=None, cv_path=None):
-        return scorer._compile_dynamic([{"keyword": "python", "weight": 2.0}])
-    monkeypatch.setattr(scorer, "load_cv_keywords", _keywords)
-
-    yield TestClient(server.app)
 
 
 def _add(description, status=JobStatus.NEW, title="teaser-job"):
@@ -80,25 +50,27 @@ def test_analyze_leaves_unenriched_jobs_alone(client):
         assert job.match_score is None
 
 
-def test_enrich_selects_exactly_what_analyze_declined(client):
+def test_enrich_retries_exactly_what_analyze_declined(client, monkeypatch):
     """
-    The same row the pre-filter skipped must be picked up by enrich's query,
-    otherwise it is stuck in a gap between the two.
+    Drive /run/enrich itself: it filters twice (the SQL query, then
+    `to_enrich`), and either one left at the old bar strands the teaser.
     """
-    job_id = _add(TEASER)
+    import scrapers.jobs_ch
 
+    job_id = _add(TEASER)
+    fetched = []
+
+    async def fake_fetch(self, source_job_id):
+        fetched.append(source_job_id)
+        return FULL_JD, ""
+
+    monkeypatch.setattr(scrapers.jobs_ch.JobsChScraper, "fetch_full_description", fake_fetch)
+    r = client.post("/run/enrich", json={"source": "jobs.ch", "limit": 99})
+    assert r.status_code == 200
+
+    assert len(fetched) == 1
     with db_session.get_session() as session:
-        selected = (
-            session.query(Job.id)
-            .filter(Job.source == "jobs.ch")
-            .filter(
-                (Job.description == None) |  # noqa: E711
-                (Job.description == "") |
-                (func.length(Job.description) < server.MIN_JD_CHARS)
-            )
-            .all()
-        )
-    assert (job_id,) in selected
+        assert session.get(Job, job_id).description == FULL_JD
 
 
 def test_analyze_still_scores_a_real_description(client):

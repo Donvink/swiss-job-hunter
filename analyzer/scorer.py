@@ -221,6 +221,11 @@ async def load_cv_keywords(
     return _COMPILED  # fallback to hardcoded list
 
 
+def is_fallback_keywords(compiled: list[tuple[re.Pattern, float, str]]) -> bool:
+    """True when load_cv_keywords could not extract keywords and returned the built-in table."""
+    return compiled is _COMPILED
+
+
 def fast_score(
     cv_text: str,
     jd_text: str,
