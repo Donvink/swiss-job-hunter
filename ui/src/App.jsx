@@ -489,7 +489,11 @@ export default function App() {
   const [searchKwInput, setSearchKwInput] = useState("");
   const [searchLoc, setSearchLoc] = useState("Zürich");
   const [searchSrc, setSearchSrc] = useState(SOURCES);
-  const [filterStatus, setFilterStatus] = useState("all");
+  // "active" is a client-side pseudo-status meaning everything except archived.
+  // The default used to be "all", which includes archived — so the board opened
+  // on the jobs the pipeline had already rejected, and `archived` was not even
+  // one of the filter buttons, leaving it both unavoidable and unreachable.
+  const [filterStatus, setFilterStatus] = useState("active");
   const [filterText, setFilterText] = useState("");
   const [filterMinStars, setFilterMinStars] = useState(0);
   const [filterSource, setFilterSource] = useState("all");
@@ -525,7 +529,10 @@ export default function App() {
 
   const fetchJobs = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/jobs?status=${filterStatus}&q=${encodeURIComponent(filterText)}&direction=${direction}&min_stars=${filterMinStars}&source=${filterSource}`);
+      // The backend does not know "active", so ask for everything and let the
+      // client-side filter below narrow it.
+      const apiStatus = filterStatus === "active" ? "all" : filterStatus;
+      const r = await fetch(`${API}/jobs?status=${apiStatus}&q=${encodeURIComponent(filterText)}&direction=${direction}&min_stars=${filterMinStars}&source=${filterSource}`);
       if (r.ok) { setJobs(await r.json()); setBackendOk(true); }
     } catch {
       if (backendOk) addLog("✗ Backend offline — run: python server.py");
@@ -746,7 +753,8 @@ export default function App() {
   };
 
   const visible = jobs.filter(j=>
-    (filterStatus==="all"||j.status===filterStatus) &&
+    (filterStatus==="all"
+      || (filterStatus==="active" ? j.status!=="archived" : j.status===filterStatus)) &&
     (minMatch===0 || (j.match_score!=null && j.match_score*100 >= minMatch))
   );
 
@@ -1058,7 +1066,7 @@ export default function App() {
                     <span style={{color:"#5e5850"}}>FILTER</span>
                   </div>
                   <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
-                    {["all","new","shortlisted","viewed","considering","applied","interviewing","offer","rejected"].map(s=>(
+                    {["active","all","new","analyzed","shortlisted","viewed","considering","applied","interviewing","offer","rejected","archived"].map(s=>(
                       <button key={s} onClick={()=>setFilterStatus(s)} style={{
                         fontSize:8,padding:"2px 7px",borderRadius:3,border:"1px solid",
                         borderColor:filterStatus===s?(STATUS_META[s]?.color||"#4d7ab5")+"55":"#d4cfc4",
