@@ -6,6 +6,8 @@ on each detail page.
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from datetime import datetime
 from typing import AsyncGenerator, Optional, Tuple
 from urllib.parse import urlencode
@@ -16,6 +18,13 @@ from scrapers.base import BaseScraper, ScrapedJob
 
 _BASE_URL = "https://www.jobscout24.ch"
 _SEARCH_URL = f"{_BASE_URL}/en/jobs/"
+_CITIES_URL = f"{_BASE_URL}/en/jobsearch/Cities/"
+_UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE)
+
+
+def _fold(name: str) -> str:
+    """Case- and accent-insensitive form of a place name: "Zürich" → "zurich"."""
+    return unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().casefold().strip()
 
 
 class JobScout24Scraper(BaseScraper):
@@ -24,39 +33,47 @@ class JobScout24Scraper(BaseScraper):
     async def scrape(
         self, keyword: str, location: str = "Zürich", max_pages: int = 5
     ) -> AsyncGenerator[ScrapedJob, None]:
+        """
+        Search page params (what the site's own search form redirects to):
+            ft   — keyword
+            psz  — postcode of a city from /jobsearch/Cities/; a city *name*
+                   is silently ignored
+            p    — 1-based page; past the last page the site answers 404
+
+        `q` / `where` / `page` look plausible but are all ignored — with them
+        every search returned the site's whole unfiltered feed (#26).
+        """
+        params: dict = {"ft": keyword}
+        if location:
+            postcode = await self._postcode(location)
+            if postcode:
+                params["psz"] = postcode
+            else:
+                print(f"[jobscout24] unknown location {location!r} — searching all of Switzerland")
+
         seen: set[str] = set()
         yielded = 0
         for page in range(1, max_pages + 1):
-            params: dict = {"q": keyword}
-            if location:
-                params["where"] = location
             if page > 1:
-                params["page"] = page
+                params["p"] = page
             url = f"{_SEARCH_URL}?{urlencode(params)}"
 
             try:
-                resp = await self._fetch(url)
+                resp = await self._fetch(url, allow_status={404})
+                if resp.status_code == 404:
+                    break  # past the last page
+                uuids = self._parse_search_page(resp.text)
             except Exception as exc:
                 self._page_error(page, exc, yielded)
                 break
 
-            soup = BeautifulSoup(resp.text, "lxml")
-            job_links = [
-                a.get("href", "")
-                for a in soup.select('a[href*="/job/"]')
-                if "/job/" in a.get("href", "")
-            ]
-
             new_on_page = 0
-            for href in job_links:
-                parts = [p for p in href.split("/") if p]
-                # expect ['en', 'job', '<uuid>']
-                if len(parts) < 3 or parts[-1] in seen:
+            for uuid in uuids:
+                if uuid in seen:
                     continue
-                uuid = parts[-1]
                 seen.add(uuid)
 
-                detail_url = f"{_BASE_URL}{href}"
+                detail_url = f"{_BASE_URL}/en/job/{uuid}/"
                 try:
                     job = await self._fetch_detail(detail_url, uuid)
                     if job:
@@ -68,8 +85,45 @@ class JobScout24Scraper(BaseScraper):
 
             if new_on_page == 0:
                 break
-            if not soup.select_one("a[rel='next'], .pagination .next"):
-                break
+
+    async def _postcode(self, location: str) -> Optional[str]:
+        """Resolve a city name to the postcode `psz` expects, via the site's autocomplete."""
+        try:
+            resp = await self._fetch(f"{_CITIES_URL}?{urlencode({'namePart': location})}")
+            cities = resp.json()
+        except Exception as exc:
+            print(f"[jobscout24] city lookup for {location!r} failed: {exc}")
+            return None
+        if not cities:
+            return None
+        # "Zürich" lists "Egg b. Zürich" before "Zurich", so prefer an exact
+        # name match over the first hit.
+        wanted = _fold(location)
+        for city in cities:
+            if _fold(city.get("Text", "")) == wanted:
+                return city.get("Value")
+        return cities[0].get("Value")
+
+    def _parse_search_page(self, html: str) -> list[str]:
+        """
+        Return the vacancy UUIDs on one search page, promoted listings included.
+
+        Raises ValueError when the heading reports hits but no result items
+        parse — the markup moved, which must surface as a broken source rather
+        than as "0 jobs".
+        """
+        soup = BeautifulSoup(html, "lxml")
+        uuids = []
+        for item in soup.select("li.job-list-item[data-job-detail-url]"):
+            match = _UUID_RE.search(item["data-job-detail-url"])
+            if match and match.group(0) not in uuids:
+                uuids.append(match.group(0))
+        if not uuids:
+            heading = soup.find("h1")
+            count = re.match(r"\s*(\d[\d',]*)", heading.get_text()) if heading else None
+            if not count or int(re.sub(r"\D", "", count.group(1))) > 0:
+                raise ValueError("no job items in search page")
+        return uuids
 
     async def _fetch_detail(self, url: str, uuid: str) -> Optional[ScrapedJob]:
         resp = await self._fetch(url)

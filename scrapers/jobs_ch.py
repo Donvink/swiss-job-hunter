@@ -40,6 +40,10 @@ _STUB_DESCRIPTION_RE = re.compile(r"^We are looking for .{0,300} to join our tea
 
 class JobsChScraper(BaseScraper):
     source_name = "jobs.ch"
+    # jobup.ch runs on the same JobCloud platform and subclasses this scraper,
+    # overriding only these two.
+    search_url = _SEARCH_BASE
+    detail_url = _DETAIL_BASE
 
     async def scrape(
         self, keyword: str, location: str = "Zürich", max_pages: int = 10
@@ -64,7 +68,7 @@ class JobsChScraper(BaseScraper):
             params = {"term": keyword, "page": page}
             if location:
                 params["location"] = location
-            url = f"{_SEARCH_BASE}?{urlencode(params)}"
+            url = f"{self.search_url}?{urlencode(params)}"
 
             try:
                 resp = await self._fetch(url)
@@ -144,7 +148,7 @@ class JobsChScraper(BaseScraper):
         """
         cards: dict[str, dict[str, str]] = {}
         for card in soup.select('[data-cy="serp-item"]'):
-            link = card.select_one('a[href*="/vacancies/detail/"]')
+            link = card.select_one('a[href*="/detail/"]')
             if not link:
                 continue
             match = _UUID_RE.search(link.get("href", ""))
@@ -215,7 +219,7 @@ class JobsChScraper(BaseScraper):
                 company=company,
                 location=location,
                 description=description,
-                url=job_url or f"{_DETAIL_BASE}{job_id}/",
+                url=job_url or f"{self.detail_url}{job_id}/",
                 source=self.source_name,
                 source_job_id=job_id,
                 salary_raw=None,
@@ -224,7 +228,7 @@ class JobsChScraper(BaseScraper):
                 raw_json=json.dumps({"json_ld": item, "card": card}, ensure_ascii=False),
             )
         except Exception as exc:
-            print(f"[jobs.ch] parse error: {exc}")
+            print(f"[{self.source_name}] parse error: {exc}")
             return None
 
     # ── detail page ────────────────────────────────────────────────────────────
@@ -234,7 +238,7 @@ class JobsChScraper(BaseScraper):
         Fetch full description and canonical URL from the HTML detail page.
         Returns (description, canonical_url), empty tuple () for 404, or None on error.
         """
-        url = f"{_DETAIL_BASE}{job_id}/"
+        url = f"{self.detail_url}{job_id}/"
         try:
             resp = await self._fetch(url, allow_status={404, 410})
             if resp.status_code in (404, 410):
@@ -262,8 +266,8 @@ class JobsChScraper(BaseScraper):
 
             return None
         except PermanentHTTPError as exc:
-            print(f"[jobs.ch] detail fetch for {job_id}: {exc}")
+            print(f"[{self.source_name}] detail fetch for {job_id}: {exc}")
             return None
         except Exception as exc:
-            print(f"[jobs.ch] detail fetch error for {job_id}: {exc}")
+            print(f"[{self.source_name}] detail fetch error for {job_id}: {exc}")
             return None
