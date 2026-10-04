@@ -633,9 +633,15 @@ async def run_analyze(req: AnalyzeRequest):
             await asyncio.gather(*tasks)
             yield f"→ Pre-filter skipped {skipped}/{total} jobs (saved ~{skipped} LLM calls)"
         else:
+            # Same CV-derived keywords the LLM path pre-filters with. Without
+            # `compiled=` this falls back to the hardcoded _WEIGHTED_SKILLS table,
+            # which describes one specific CV and scores everyone else's jobs
+            # against it.
+            cv_keywords = await load_cv_keywords(cv_text, direction=direction)
+            yield f"→ Loaded {len(cv_keywords)} keywords from CV"
             for job_id, title, description in job_data:
                 try:
-                    result = fast_score(cv_text, description or "")
+                    result = fast_score(cv_text, description or "", compiled=cv_keywords)
                     with get_session() as session:
                         job = session.get(Job, job_id)
                         if job:

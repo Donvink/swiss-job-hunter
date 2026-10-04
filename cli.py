@@ -208,7 +208,7 @@ def analyze(
 
 async def _analyze(limit: int, use_llm: bool, min_score: float, rescore: bool, concurrency: int) -> None:
     import asyncio as _asyncio
-    from analyzer.scorer import fast_score, llm_score, load_cv_text
+    from analyzer.scorer import fast_score, llm_score, load_cv_text, load_cv_keywords
     from db.models import Job, JobStatus
     from db.session import get_session
 
@@ -217,6 +217,11 @@ async def _analyze(limit: int, use_llm: bool, min_score: float, rescore: bool, c
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
+
+    # Keywords extracted from the CV. fast_score falls back to a hardcoded table
+    # when these are not passed, so without this the keyword path scores against
+    # a different CV than the one on disk.
+    cv_keywords = await load_cv_keywords(cv_text)
 
     with get_session() as session:
         q = session.query(Job.id, Job.title, Job.description, Job.status).filter(
@@ -266,7 +271,7 @@ async def _analyze(limit: int, use_llm: bool, min_score: float, rescore: bool, c
             if use_llm:
                 result = await llm_score(cv_text, title, description)
             else:
-                result = fast_score(cv_text, description)
+                result = fast_score(cv_text, description, compiled=cv_keywords)
 
             with get_session() as session:
                 j = session.get(Job, jid)
