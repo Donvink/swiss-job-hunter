@@ -7,6 +7,18 @@ const API = window.__API_BASE_URL__ || import.meta.env.VITE_API_BASE_URL || "htt
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+// Detail pane sizing. The clamp keeps either side from being squeezed away —
+// including on a window narrower than the width that was remembered.
+const DETAIL_W_KEY = "sjh.detailWidth";
+const DETAIL_W_DEFAULT = 400;
+const DETAIL_W_MIN = 320;   // below this the JD is unreadable
+const LIST_W_MIN = 420;     // below this the job rows truncate to uselessness
+
+function clampDetailW(w, viewport = (typeof window === "undefined" ? 1280 : window.innerWidth)) {
+  const max = Math.max(DETAIL_W_MIN, viewport - LIST_W_MIN);
+  return Math.round(Math.max(DETAIL_W_MIN, Math.min(w, max)));
+}
+
 const STATUS_META = {
   new:          { label: "NEW",         color: "#7a8fa8", bg: "rgba(122,143,168,0.10)" },
   analyzed:     { label: "ANALYZED",    color: "#4d7ab5", bg: "rgba(77,122,181,0.10)" },
@@ -482,6 +494,13 @@ export default function App() {
   const [jobs, setJobs] = useState([]);
   const [stats, setStats] = useState({});
   const [selected, setSelected] = useState(null);
+  // Detail pane width is draggable and remembered. localStorage throws in some
+  // privacy modes, so every access is guarded and falls back to the old fixed 400.
+  const [detailW, setDetailW] = useState(() => {
+    try { return clampDetailW(parseInt(localStorage.getItem(DETAIL_W_KEY), 10) || DETAIL_W_DEFAULT); }
+    catch { return DETAIL_W_DEFAULT; }
+  });
+  const draggingRef = useRef(false);
   const [log, setLog] = useState([]);
   const [loading, setLoading] = useState({});
   const pipelineRunning = useRef(false);
@@ -545,6 +564,32 @@ export default function App() {
   }, [minMatch]);
 
   useEffect(() => { fetchJobs(); fetchStats(); }, [fetchJobs, fetchStats]);
+
+  // Divider drag, plus a re-clamp when the window changes size: a width stored on
+  // a wide display would otherwise squeeze the job list on a narrow one.
+  useEffect(() => {
+    const onMove = e => {
+      if (!draggingRef.current) return;
+      setDetailW(clampDetailW(window.innerWidth - e.clientX));
+    };
+    const onUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setDetailW(w => { try { localStorage.setItem(DETAIL_W_KEY, String(w)); } catch {} return w; });
+    };
+    const onResize = () => setDetailW(w => clampDetailW(w));
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("resize", onResize);
+    onResize();
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("resize", onResize);
+    };
+  }, []);
 
   useEffect(() => {
     fetch(`${API}/config`).then(r=>r.ok?r.json():null).then(cfg=>{
@@ -1231,7 +1276,20 @@ export default function App() {
               </div>
 
               {/* RIGHT PANEL */}
-              <div style={{width:400,borderLeft:"1px solid #d4cfc4",display:"flex",
+              <div
+                onMouseDown={()=>{ draggingRef.current = true;
+                  document.body.style.cursor = "col-resize";
+                  document.body.style.userSelect = "none"; }}
+                onDoubleClick={()=>{ setDetailW(clampDetailW(DETAIL_W_DEFAULT));
+                  try { localStorage.setItem(DETAIL_W_KEY, String(DETAIL_W_DEFAULT)); } catch {} }}
+                title="drag to resize · double-click to reset"
+                style={{width:5,flexShrink:0,cursor:"col-resize",background:"#d4cfc4",
+                  borderLeft:"1px solid #e0dbd0",borderRight:"1px solid #e0dbd0"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#4d7ab5"}
+                onMouseLeave={e=>{ if(!draggingRef.current) e.currentTarget.style.background="#d4cfc4"; }}
+              />
+
+              <div style={{width:detailW,borderLeft:"1px solid #d4cfc4",display:"flex",
                 flexDirection:"column",background:"#ede8de",flexShrink:0}}>
                 <div style={{display:"flex",borderBottom:"1px solid #d4cfc4",flexShrink:0,background:"#e8e3d8"}}>
                   <RTab id="detail" label="DETAIL"/>
@@ -1242,6 +1300,32 @@ export default function App() {
                 </div>
 
                 {/* DETAIL TAB */}
+                {rightTab==="detail" && selected && (
+                  /* Above the scrolling pane rather than inside it: the status
+                     control is the reason the pane is open, and it used to sit
+                     below the full job description. */
+                  <div style={{
+                    flexShrink:0,padding:"8px 14px",background:"#ede8de",
+                    borderBottom:"1px solid #d4cfc4",
+                    display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",
+                  }}>
+                    <span style={{fontSize:9,color:"#8a8278",letterSpacing:"0.1em",
+                      fontWeight:700,flexShrink:0}}>STATUS</span>
+                    {["viewed","considering","shortlisted","applied","interviewing","offer","rejected","archived"].map(s=>(
+                      <button key={s} onClick={()=>{
+                        if(s==="applied") setApplyModal(true);
+                        else updateStatus(selected.id,s);
+                      }} style={{
+                        fontSize:8,padding:"4px 8px",borderRadius:3,
+                        border:`1px solid ${STATUS_META[s]?.color||"#8a8278"}${selected.status===s?"90":"35"}`,
+                        background:selected.status===s?`${STATUS_META[s]?.color}22`:"transparent",
+                        color:STATUS_META[s]?.color||"#8a8278",
+                        cursor:"pointer",fontFamily:"monospace",fontWeight:700,letterSpacing:"0.05em",
+                      }}>{s.toUpperCase()}</button>
+                    ))}
+                  </div>
+                )}
+
                 {rightTab==="detail" && (
                   <div style={{flex:1,overflowY:"auto",padding:18}}>
                     {!selected
@@ -1327,23 +1411,6 @@ export default function App() {
                             disabled={!selected?.description} label="TAILOR CV FOR THIS JD" icon="📝" color="#a87c2e"/>
                         </div>
 
-                        <div>
-                          <div style={{fontSize:9,color:"#8a8278",letterSpacing:"0.1em",fontWeight:700,marginBottom:7}}>UPDATE STATUS</div>
-                          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>
-                            {["viewed","considering","shortlisted","applied","interviewing","offer","rejected","archived"].map(s=>(
-                              <button key={s} onClick={()=>{
-                                if(s==="applied") setApplyModal(true);
-                                else updateStatus(selected.id,s);
-                              }} style={{
-                                fontSize:8,padding:"4px 8px",borderRadius:3,
-                                border:`1px solid ${STATUS_META[s]?.color||"#8a8278"}35`,
-                                background:selected.status===s?`${STATUS_META[s]?.color}18`:"transparent",
-                                color:STATUS_META[s]?.color||"#8a8278",
-                                cursor:"pointer",fontFamily:"monospace",fontWeight:700,letterSpacing:"0.05em",
-                              }}>{s.toUpperCase()}</button>
-                            ))}
-                          </div>
-                        </div>
                       </>
                     }
                   </div>
