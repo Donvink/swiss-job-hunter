@@ -199,10 +199,15 @@ def update_status(job_id: int, body: dict):
         if not job:
             raise HTTPException(404, "Job not found")
         job.status = s
-        if s == JobStatus.ARCHIVED:
-            # Distinguishes "the user dismissed this" from the pipeline archiving
-            # it, so the tracker can keep the card around to be dragged back out.
-            job.archived_by_user = True
+        # Distinguishes "the user dismissed this" from the pipeline archiving
+        # it, so the tracker can keep the card around to be dragged back out.
+        # Cleared on the way out so a later pipeline re-archive isn't mistaken
+        # for a user decision.
+        job.archived_by_user = (s == JobStatus.ARCHIVED)
+        # The board's drag-and-drop lands here without the apply dialog, so make
+        # sure an applied card at least carries a timestamp.
+        if s == JobStatus.APPLIED and job.applied_at is None:
+            job.applied_at = datetime.utcnow()
     return {"ok": True}
 
 
