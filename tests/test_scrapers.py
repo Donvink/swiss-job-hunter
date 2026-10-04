@@ -144,26 +144,121 @@ async def test_jobs_ch_detail_404_reports_an_expired_vacancy():
 
 
 @pytest.mark.asyncio
-async def test_jobup_ch_scraper_parse():
+async def test_jobup_ch_searches_its_own_page_and_reads_its_cards():
+    """
+    jobup.ch reuses the jobs.ch parser. Its search API ignored the query (#26),
+    and its cards link to /jobs/detail/ rather than /vacancies/detail/.
+    """
     from scrapers.jobup_ch import JobupChScraper
 
-    doc = {
-        "id": "99",
-        "title": "Data Scientist",
-        "company": {"name": "Swiss Bank"},
-        "place": {"name": "Genève"},
-        "teaser": "Exciting data science role",
-        "slug": "data-scientist-swiss-bank",
-        "publication_date": "2025-02-01T09:00:00Z",
-    }
+    page = (
+        _jobs_ch_page(_UUID_A)
+        .replace("/en/vacancies/detail/", "/en/jobs/detail/")
+        .replace("https://www.jobs.ch", "https://www.jobup.ch")
+    )
+    calls = []
+
+    async def fake_fetch(url, **kwargs):
+        calls.append(url)
+        return MagicMock(text=page, status_code=200)
 
     scraper = JobupChScraper()
-    job = scraper._parse(doc)
+    scraper._fetch = fake_fetch  # type: ignore[assignment]
+    jobs = [j async for j in scraper.scrape("intune", "Zürich", max_pages=1)]
 
-    assert job is not None
-    assert job.title == "Data Scientist"
-    assert job.company == "Swiss Bank"
+    assert calls[0].startswith("https://www.jobup.ch/en/jobs/?term=intune&")
+    assert len(jobs) == 1
+    job = jobs[0]
     assert job.source == "jobup.ch"
+    assert job.url == f"https://www.jobup.ch/en/jobs/detail/{_UUID_A}/"
+    assert job.location == "Zürich"  # from the card, which the JSON-LD lacks
+
+
+def _jobscout24_page(count: int, *uuids: str) -> str:
+    items = "".join(
+        f'<li class="job-list-item" data-job-detail-url="/en/job/{u}/">'
+        f'<a href="/en/job/{u}/">Job</a></li>'
+        for u in uuids
+    )
+    return f"<html><body><h1>{count} Intune jobs  in Zürich found</h1><ul>{items}</ul></body></html>"
+
+
+@pytest.mark.asyncio
+async def test_jobscout24_sends_the_params_the_site_reads():
+    """
+    `q` / `where` were ignored and returned the whole feed (#26). The site
+    filters on `ft` and on `psz`, a postcode from its city autocomplete.
+    """
+    from urllib.parse import parse_qs, urlsplit
+
+    from scrapers.base import ScrapedJob
+    from scrapers.jobscout24 import JobScout24Scraper
+
+    scraper = JobScout24Scraper()
+    searches = []
+
+    async def fake_fetch(url, **kwargs):
+        if "/jobsearch/Cities/" in url:
+            cities = [{"Text": "Egg b. Zürich", "Value": "8132"}, {"Text": "Zurich", "Value": "8000"}]
+            return MagicMock(status_code=200, json=lambda: cities)
+        searches.append(parse_qs(urlsplit(url).query))
+        if len(searches) > 1:
+            assert kwargs.get("allow_status") == {404}
+            return MagicMock(status_code=404, text="")  # past the last page
+        return MagicMock(status_code=200, text=_jobscout24_page(2, _UUID_A, _UUID_B))
+
+    async def fake_detail(url, uuid):
+        return ScrapedJob("Endpoint Engineer", "Acme", "Zürich", "d", url, "jobscout24.ch", uuid)
+
+    scraper._fetch = fake_fetch  # type: ignore[assignment]
+    scraper._fetch_detail = fake_detail  # type: ignore[assignment]
+    jobs = [j async for j in scraper.scrape("intune", "Zürich", max_pages=5)]
+
+    assert [j.source_job_id for j in jobs] == [_UUID_A, _UUID_B]
+    # The exact "Zurich" wins over the first autocomplete hit.
+    assert searches[0] == {"ft": ["intune"], "psz": ["8000"]}
+    assert searches[1]["p"] == ["2"]
+    assert len(searches) == 2  # the 404 ended the run
+
+
+def test_jobscout24_tells_an_empty_search_from_moved_markup():
+    from scrapers.jobscout24 import JobScout24Scraper
+
+    scraper = JobScout24Scraper()
+    assert scraper._parse_search_page(_jobscout24_page(0)) == []
+    with pytest.raises(ValueError):
+        scraper._parse_search_page(_jobscout24_page(115))
+
+
+@pytest.mark.asyncio
+async def test_michael_page_sends_search_and_stops_on_404():
+    """`keywords` was ignored and returned the unfiltered /jobs feed (#26)."""
+    from urllib.parse import parse_qs, urlsplit
+
+    from scrapers.michael_page import MichaelPageScraper
+
+    rows = "".join(
+        f'<div class="views-row"><h3><a href="/job-detail/engineer-{n}/ref/jn-{n}">Engineer {n}</a></h3></div>'
+        for n in range(10)  # a full page, so only the 404 can end the run
+    )
+    page = f'<html><body><div class="view-content">{rows}</div></body></html>'
+    searches = []
+
+    async def fake_fetch(url, **kwargs):
+        assert kwargs.get("allow_status") == {404}
+        searches.append(parse_qs(urlsplit(url).query))
+        if len(searches) > 1:
+            return MagicMock(status_code=404, text="")
+        return MagicMock(status_code=200, text=page)
+
+    scraper = MichaelPageScraper()
+    scraper._fetch = fake_fetch  # type: ignore[assignment]
+    jobs = [j async for j in scraper.scrape("system engineer", "Zürich", max_pages=5)]
+
+    assert len(jobs) == 10
+    assert searches[0] == {"search": ["system engineer"], "location": ["Zürich"]}
+    assert searches[1]["page"] == ["1"]
+    assert len(searches) == 2
 
 
 # ── source-level failure reporting ────────────────────────────────────────────

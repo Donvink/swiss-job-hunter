@@ -22,9 +22,19 @@ class MichaelPageScraper(BaseScraper):
     async def scrape(
         self, keyword: str, location: str = "Zürich", max_pages: int = 5
     ) -> AsyncGenerator[ScrapedJob, None]:
+        """
+        `/jobs?search=<kw>&location=<city>` redirects to the canonical
+        `/jobs/<kw>/<city>` listing, which is what the site's own search box
+        does. `keywords` (what this used to send) is ignored, so every search
+        came back as the unfiltered /jobs feed (#26).
+
+        `page` is 0-based and survives the redirect. Past the last page — and
+        for a search with no hits at all — the site answers 404.
+        """
+        seen: set[str] = set()
         yielded = 0
         for page in range(max_pages):
-            params: dict = {"keywords": keyword}
+            params: dict = {"search": keyword}
             if location:
                 params["location"] = location
             if page > 0:
@@ -32,9 +42,11 @@ class MichaelPageScraper(BaseScraper):
             url = f"{_SEARCH_URL}?{urlencode(params)}"
 
             try:
-                resp = await self._fetch(url)
+                resp = await self._fetch(url, allow_status={404})
             except Exception as exc:
                 self._page_error(page, exc, yielded)
+                break
+            if resp.status_code == 404:
                 break
 
             soup = BeautifulSoup(resp.text, "lxml")
@@ -42,13 +54,16 @@ class MichaelPageScraper(BaseScraper):
             if not items:
                 break
 
+            fresh = 0
             for item in items:
                 job = self._parse_item(item)
-                if job:
+                if job and job.url not in seen:
+                    seen.add(job.url)
+                    fresh += 1
                     yielded += 1
                     yield job
 
-            if len(items) < 10:
+            if fresh == 0 or len(items) < 10:
                 break
 
     def _parse_item(self, item) -> Optional[ScrapedJob]:
