@@ -348,6 +348,12 @@ async def run_search(req: SearchRequest):
     return await sse(gen())
 
 
+# Shortlist / archive bars, shared by the two paths that assign status from a
+# score: /run/analyze and the rescore_llm branch of /run/enrich.
+DEFAULT_MIN_SCORE = 0.3      # at or above this a job is SHORTLISTED
+DEFAULT_ARCHIVE_BELOW = 0.1  # below this it is ARCHIVED
+
+
 class EnrichRequest(BaseModel):
     limit: int = 50
     source: str = "jobs.ch"
@@ -502,9 +508,9 @@ async def run_enrich(req: EnrichRequest):
                         job = session.get(Job, job_id)
                         if job:
                             job.match_score = result.score
-                            if result.score < 0.1:
+                            if result.score < DEFAULT_ARCHIVE_BELOW:
                                 job.status = JobStatus.ARCHIVED
-                            elif result.score >= 0.6:
+                            elif result.score >= DEFAULT_MIN_SCORE:
                                 job.status = JobStatus.SHORTLISTED
                     scored += 1
                     yield f"  🧠 job #{job_id} — {round(result.score * 100)}%"
@@ -517,9 +523,9 @@ async def run_enrich(req: EnrichRequest):
 class AnalyzeRequest(BaseModel):
     limit: int = 100
     llm: bool = False
-    min_score: float = 0.3
+    min_score: float = DEFAULT_MIN_SCORE
     skip_scored: bool = True
-    archive_below: float = 0.1  # auto-archive jobs scoring below this (LLM mode only)
+    archive_below: float = DEFAULT_ARCHIVE_BELOW  # auto-archive below this (LLM mode only)
     min_keyword_score: float = 0.3  # skip LLM if keyword pre-filter score < this
     direction: Optional[str] = None
     concurrency: int = 10
@@ -560,7 +566,12 @@ async def run_analyze(req: AnalyzeRequest):
             jobs = query.order_by(Job.scraped_at.desc()).limit(lim).all()
             job_data = [(j.id, j.title, j.description) for j in jobs]
 
-        threshold = req.min_score if not req.llm else min(req.min_score, 0.2)
+        # `min(req.min_score, 0.2)` used to cap this in LLM mode, so the bar could
+        # only ever be lowered and min_score was inert above 0.2 — a 25% match the
+        # model had explicitly rejected still landed in SHORTLISTED. It also
+        # disagreed with the ⭐ in the log below, which already compares against
+        # req.min_score.
+        threshold = req.min_score
         yield f"Analyzing {len(job_data)} jobs (mode: {'LLM' if req.llm else 'keyword'}, concurrency: {req.concurrency if req.llm else 1})..."
         if not job_data:
             yield "✓ Nothing to score"
