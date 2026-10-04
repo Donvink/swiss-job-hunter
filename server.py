@@ -353,6 +353,12 @@ async def run_search(req: SearchRequest):
 DEFAULT_MIN_SCORE = 0.3      # at or above this a job is SHORTLISTED
 DEFAULT_ARCHIVE_BELOW = 0.1  # below this it is ARCHIVED
 
+# Below this many characters a stored description is a search-results teaser,
+# not a job ad. One number for both halves of the loop: /run/enrich selects the
+# jobs under it, and the keyword pre-filter declines to judge them. If the two
+# differed, anything in the gap would be neither re-fetched nor scored.
+MIN_JD_CHARS = 400
+
 
 class EnrichRequest(BaseModel):
     limit: int = 50
@@ -374,7 +380,7 @@ async def run_enrich(req: EnrichRequest):
                 .filter(
                     (Job.description == None) |  # noqa: E711
                     (Job.description == "") |
-                    (func.length(Job.description) < 100)
+                    (func.length(Job.description) < MIN_JD_CHARS)
                 )
                 .order_by(Job.scraped_at.desc())
                 .limit(req.limit)
@@ -401,7 +407,7 @@ async def run_enrich(req: EnrichRequest):
                 if sjid:
                     job_data.append((j.id, sjid, dlen))
 
-        to_enrich = [(jid, sjid) for jid, sjid, dlen in job_data if dlen < 100]
+        to_enrich = [(jid, sjid) for jid, sjid, dlen in job_data if dlen < MIN_JD_CHARS]
         yield f"Enriching {len(to_enrich)} jobs from {req.source}..."
         if not to_enrich:
             yield f"✓ Enriched 0/0 jobs"
@@ -587,13 +593,26 @@ async def run_analyze(req: AnalyzeRequest):
             queue: Queue = Queue()
             sem = asyncio.Semaphore(req.concurrency)
             completed = 0
-            skipped = 0
+            skipped = 0        # judged irrelevant by the keyword pre-filter
+            unenriched = 0     # no description to judge yet — not a rejection
             total = len(job_data)
 
             async def score_one(job_id: int, title: str, description: str) -> None:
-                nonlocal shortlisted, completed, skipped
+                nonlocal shortlisted, completed, skipped, unenriched
                 async with sem:
                     try:
+                        # A description too short to judge means enrichment has not
+                        # run or failed, not that the job is irrelevant. Archiving on
+                        # that score makes a scraping failure indistinguishable from a
+                        # genuine rejection, and the job silently disappears. Leave the
+                        # status untouched so the next enrich pass can retry it.
+                        if len((description or "").strip()) < MIN_JD_CHARS:
+                            unenriched += 1
+                            await queue.put(
+                                f"· #{job_id} not enriched yet — {title[:45]}"
+                            )
+                            return
+
                         # Keyword pre-filter: skip LLM if clearly irrelevant
                         kw_result = fast_score(cv_text, description or "", compiled=cv_keywords)
                         if kw_result.score < req.min_keyword_score:
@@ -643,6 +662,9 @@ async def run_analyze(req: AnalyzeRequest):
                 yield msg
             await asyncio.gather(*tasks)
             yield f"→ Pre-filter skipped {skipped}/{total} jobs (saved ~{skipped} LLM calls)"
+            if unenriched:
+                yield (f"→ {unenriched}/{total} jobs have no description yet "
+                       f"(under {MIN_JD_CHARS} chars) — run Enrich, then score again")
         else:
             # Same CV-derived keywords the LLM path pre-filters with. Without
             # `compiled=` this falls back to the hardcoded _WEIGHTED_SKILLS table,
@@ -650,8 +672,15 @@ async def run_analyze(req: AnalyzeRequest):
             # against it.
             cv_keywords = await load_cv_keywords(cv_text, direction=direction)
             yield f"→ Loaded {len(cv_keywords)} keywords from CV"
+            total_kw = len(job_data)
+            unenriched = 0
             for job_id, title, description in job_data:
                 try:
+                    # Same rule as the LLM path: a teaser is not a judgement.
+                    if len((description or "").strip()) < MIN_JD_CHARS:
+                        unenriched += 1
+                        yield f"· #{job_id} not enriched yet — {title[:45]}"
+                        continue
                     result = fast_score(cv_text, description or "", compiled=cv_keywords)
                     with get_session() as session:
                         job = session.get(Job, job_id)
@@ -668,6 +697,10 @@ async def run_analyze(req: AnalyzeRequest):
                     yield f"{icon} #{job_id} {score_pct} — {title[:45]}"
                 except Exception as e:
                     yield f"✗ #{job_id} error: {e}"
+
+            if unenriched:
+                yield (f"→ {unenriched}/{total_kw} jobs have no description yet "
+                       f"(under {MIN_JD_CHARS} chars) — run Enrich, then score again")
 
         yield f"✓ Done — {shortlisted}/{len(job_data)} shortlisted"
     return await sse(gen())
