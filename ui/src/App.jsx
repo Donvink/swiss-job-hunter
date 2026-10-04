@@ -371,9 +371,11 @@ function Timeline({ jobId, onRefresh }) {
 
 // ── Tracker board ─────────────────────────────────────────────────────────────
 
-function TrackerBoard({ onSelectJob }) {
+function TrackerBoard({ onSelectJob, onChanged }) {
   const [items, setItems] = useState([]);
   const [expanded, setExpanded] = useState(null);
+  const [dragId, setDragId]   = useState(null);   // card being dragged
+  const [dropCol, setDropCol] = useState(null);   // column under the cursor
 
   const load = useCallback(async () => {
     const r = await fetch(`${API}/tracker`);
@@ -382,10 +384,35 @@ function TrackerBoard({ onSelectJob }) {
 
   useEffect(() => { load(); const t = setInterval(load, 15000); return ()=>clearInterval(t); }, [load]);
 
-  const cols = ["viewed","considering","applied","interviewing","offer","rejected"];
+  // "viewed" is deliberately absent: it is set by opening a listing, not by
+  // deciding anything, so it is browsing history rather than a pipeline stage.
+  const cols = ["considering","applied","interviewing","offer","rejected","archived"];
+  // Columns a job leaves the funnel through — excluded from the "active" count.
+  const EXIT_COLS = ["rejected","archived"];
   const byStatus = Object.fromEntries(cols.map(c => [c, items.filter(j=>j.status===c)]));
 
   const fmt = iso => iso ? new Date(iso).toLocaleDateString("de-CH",{day:"2-digit",month:"2-digit"}) : "—";
+
+  // Drop a card into another column: PATCH the status, move it locally so the
+  // board does not wait on the round-trip, and tell the parent so the job list
+  // and the counters pick up the same change.
+  const moveTo = async (jobId, status) => {
+    const job = items.find(j => j.id === jobId);
+    if (!job || job.status === status) return;
+    setItems(prev => prev.map(j => j.id === jobId ? { ...j, status } : j));
+    try {
+      const r = await fetch(`${API}/jobs/${jobId}/status`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      onChanged?.(jobId, status);
+      load();
+    } catch {
+      // put the card back; no reload, the local state already matches the server
+      setItems(prev => prev.map(j => j.id === jobId ? { ...j, status: job.status } : j));
+    }
+  };
 
   return (
     <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
@@ -397,7 +424,13 @@ function TrackerBoard({ onSelectJob }) {
           PROGRESS TRACKER
         </span>
         <span style={{fontSize:10,color:"#c4beb0"}}>·</span>
-        <span style={{fontSize:10,color:"#8a8278"}}>{items.length} active</span>
+        <span style={{fontSize:10,color:"#8a8278"}}>
+          {items.filter(j=>!EXIT_COLS.includes(j.status)).length} active
+        </span>
+        <span style={{fontSize:10,color:"#c4beb0"}}>·</span>
+        <span style={{fontSize:10,color:"#8a8278"}}>{items.length} total</span>
+        <span style={{fontSize:10,color:"#c4beb0"}}>·</span>
+        <span style={{fontSize:10,color:"#a8a098"}}>drag a card between columns to change its status</span>
         <div style={{flex:1}}/>
         <button onClick={load} style={{background:"none",border:"none",color:"#8a8278",cursor:"pointer",fontSize:12}}>↺</button>
       </div>
@@ -408,11 +441,19 @@ function TrackerBoard({ onSelectJob }) {
             const m = STATUS_META[col];
             const colJobs = byStatus[col] || [];
             return (
-              <div key={col} style={{
+              <div key={col}
+                onDragOver={e=>{ e.preventDefault(); if (dropCol!==col) setDropCol(col); }}
+                onDragLeave={()=>setDropCol(c=>c===col?null:c)}
+                onDrop={e=>{ e.preventDefault(); setDropCol(null);
+                  const id = parseInt(e.dataTransfer.getData("text/plain"),10);
+                  if (!Number.isNaN(id)) moveTo(id, col); setDragId(null); }}
+                style={{
                 minWidth:220,flex:1,marginRight:12,
-                background:"#ede8de",border:`1px solid ${m.color}25`,
+                background: dropCol===col ? `${m.color}0e` : "#ede8de",
+                border:`1px solid ${dropCol===col ? m.color+"70" : m.color+"25"}`,
                 borderTop:`2px solid ${m.color}`,borderRadius:6,
                 display:"flex",flexDirection:"column",maxHeight:"100%",
+                transition:"background 0.12s, border-color 0.12s",
               }}>
                 <div style={{
                   padding:"10px 12px",display:"flex",
@@ -429,12 +470,18 @@ function TrackerBoard({ onSelectJob }) {
                     ? <div style={{color:"#c4beb0",fontSize:10,textAlign:"center",padding:"20px 0"}}>empty</div>
                     : colJobs.map(j=>(
                       <div key={j.id}
+                        draggable
+                        onDragStart={e=>{ e.dataTransfer.setData("text/plain", String(j.id));
+                          e.dataTransfer.effectAllowed="move"; setDragId(j.id); }}
+                        onDragEnd={()=>{ setDragId(null); setDropCol(null); }}
                         onClick={()=>{ setExpanded(expanded===j.id?null:j.id); onSelectJob?.(j); }}
+                        title="drag to another column to change status"
                         style={{
                           background: expanded===j.id?"#ddd8cc":"#f0ece4",
                           border:`1px solid ${expanded===j.id?m.color+"45":"#d4cfc4"}`,
                           borderRadius:5,padding:"10px 11px",marginBottom:8,
-                          cursor:"pointer",transition:"all 0.15s",
+                          cursor:"grab",transition:"all 0.15s",
+                          opacity: dragId===j.id ? 0.4 : 1,
                         }}
                         onMouseEnter={e=>e.currentTarget.style.borderColor=m.color+"45"}
                         onMouseLeave={e=>e.currentTarget.style.borderColor=expanded===j.id?m.color+"45":"#d4cfc4"}
@@ -908,7 +955,14 @@ export default function App() {
         <div style={{flex:1,display:"flex",overflow:"hidden"}}>
 
           {mainTab==="tracker"
-            ? <TrackerBoard onSelectJob={j=>{setSelected(j);setMainTab("board");}}/>
+            ? <TrackerBoard
+                onSelectJob={j=>{setSelected(j);setMainTab("board");}}
+                onChanged={(jobId,status)=>{
+                  setJobs(prev=>prev.map(j=>j.id===jobId?{...j,status}:j));
+                  setSelected(prev=>prev?.id===jobId?{...prev,status}:prev);
+                  fetchStats();
+                  addLog(`✓ #${jobId} → ${status}`);
+                }}/>
             : <>
               {/* LEFT PANEL */}
               <div style={{width:300,borderRight:"1px solid #d4cfc4",display:"flex",
