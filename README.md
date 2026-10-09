@@ -43,24 +43,22 @@ This repository is where it started: a script I wrote for my own job search in S
 what it grew into — the same idea, rebuilt as a product you can use without Docker, API keys or a server.
 (It launched as EuroJobHunter in July 2026 and is JobHiker since October.)
 
-| | |
-|---|---|
-| 🔎 **Every board, once** | jobs.ch, jobup.ch, JobScout24, LinkedIn and more, crawled several times a day and deduplicated into one pool of the last 30 days. Full-text search over every description. |
-| 🎯 **About 150 real occupations** | Pick your roles from ~150 occupations grounded in ISCO-08 (not a dozen broad categories), plus internships and apprenticeships, cantons, languages and workload. |
-| 🧠 **Read against your CV** | Each new posting is scored on role, experience, location and industry, with a one-sentence reason. Postings that need a language you don't speak, or years far beyond yours, are filtered out before they reach you. |
-| 📬 **Sent to you, twice a day** | A digest by e-mail or Telegram at 07:30 and 16:30, employers' own postings only (no recruiter spam). |
-| ✍️ **Apply faster, never blindly** | A cover-letter draft for the job, and a browser extension that fills the application form on jobs.ch, jobup.ch, LinkedIn and a growing list of employer sites — then stops. You check it and press send yourself. |
-| 📋 **Track everything** | A board for every application: shortlisted, applied, interviewing, offer — with exactly what you sent. |
-| 📈 **The market, daily** | [JobHiker Pulse](https://jobhiker.com/pulse): how many jobs opened today, where, and in which fields. |
-| 📱 **On your phone** | Open it in the phone browser and add it to the home screen; it works like an app. |
+- 🔎 **Every board, once** — jobs.ch, jobup.ch, JobScout24, LinkedIn and more, crawled several times a day and deduplicated into one pool of the last 30 days. Full-text search over every description.
+- 🎯 **About 150 real occupations** — pick your roles from ~150 occupations grounded in ISCO-08 (not a dozen broad categories), plus internships and apprenticeships, cantons, languages and workload.
+- 🧠 **Read against your CV** — each new posting is scored on role, experience, location and industry, with a one-sentence reason. Postings that need a language you don't speak, or years far beyond yours, are filtered out before they reach you.
+- 📬 **Sent to you, twice a day** — A digest by e-mail or Telegram at 07:30 and 16:30, employers' own postings only (no recruiter spam).
+- ✍️ **Apply faster, never blindly** — A cover-letter draft for the job, and a browser extension that fills the application form on jobs.ch, jobup.ch, LinkedIn and a growing list of employer sites — then stops. You check it and press send yourself.
+- 📋 **Track everything** — A board for every application: shortlisted, applied, interviewing, offer — with exactly what you sent.
+- 📈 **The market, daily** — [JobHiker Pulse](https://jobhiker.com/pulse): how many jobs opened today, where, and in which fields.
+- 📱 **On your phone** — open it in the phone browser and add it to the home screen; it works like an app.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/jobhiker/roles.png" alt="Pick your roles from about 150 occupations"><br><sub><b>Onboarding</b> — pick your roles and see how many open jobs match, live</sub></td>
-<td width="50%"><img src="docs/jobhiker/search.png" alt="Search every job in the pool"><br><sub><b>Search</b> — the whole pool, filterable by field, canton, language, board, contract and workload</sub></td>
+<td width="50%"><img src="docs/jobhiker/phone.png" alt="JobHiker on the iPhone home screen, and the dashboard on the phone"><br><sub><b>On your phone</b> — add it to the home screen; your matches, scored, wherever you are</sub></td>
+<td width="50%"><img src="docs/jobhiker/extension.png" alt="The extension fills an application form and attaches the CV and the letter"><br><sub><b>Extension</b> — the form, the CV and the cover letter filled in; sending stays with you</sub></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/jobhiker/extension.png" alt="The extension fills an application form and attaches the CV and the letter"><br><sub><b>Extension</b> — the form, the CV and the cover letter filled in; sending stays with you</sub></td>
+<td width="50%"><img src="docs/jobhiker/search.png" alt="Search every job in the pool"><br><sub><b>Search</b> — the whole pool, filterable by field, canton, language, board, contract and workload</sub></td>
 <td width="50%"><img src="docs/jobhiker/pulse-map.png" alt="JobHiker Pulse map of new jobs by canton"><br><sub><b>Pulse</b> — new jobs by canton, every day</sub></td>
 </tr>
 </table>
