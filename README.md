@@ -33,7 +33,7 @@ Swiss Job Hunter automates the boring parts:
 
 <div align="center">
 
-**[jobhiker.com](https://jobhiker.com)** · every new Swiss job, read against your CV, the good ones sent to you twice a day
+**[jobhiker.com](https://jobhiker.com)** · every new Swiss job, read against your CV · the best ones sent to you twice a day · the application form filled in for you, ready to send
 
 <a href="https://jobhiker.com"><img src="docs/jobhiker/matches.png" alt="JobHiker matches: each new posting scored against your CV, with the reason in one sentence" width="100%"></a>
 
@@ -59,12 +59,12 @@ what it grew into — the same idea, rebuilt as a product you can use without Do
 </tr>
 <tr>
 <td width="50%"><img src="docs/jobhiker/search.png" alt="Search every job in the pool"><br><sub><b>Search</b> — the whole pool, filterable by field, canton, language, board, contract and workload</sub></td>
-<td width="50%"><img src="docs/jobhiker/pulse-map.png" alt="JobHiker Pulse map of new jobs by canton"><br><sub><b>Pulse</b> — new jobs by canton, every day</sub></td>
+<td width="50%"><img src="docs/jobhiker/pulse-map.png" alt="JobHiker Pulse map of new jobs by canton"><br><sub><b>Pulse</b> — new jobs by canton, every day. Data: <a href="https://jobhiker.com/pulse">JobHiker Pulse</a>; canton boundaries © <a href="https://www.swisstopo.admin.ch/en/landscape-model-swissboundaries3d">swisstopo swissBOUNDARIES3D</a></sub></td>
 </tr>
 </table>
 
 **Free to start:** the first month has every feature, no card needed. Search, your board and the
-application tracker stay free after that. Your data stays on servers in the EU, and your CV is stored encrypted.
+application tracker stay free after that.
 
 <div align="center">
 
