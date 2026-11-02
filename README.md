@@ -23,7 +23,7 @@ Job searching in Switzerland is fragmented — the same listing appears on jobs.
 Swiss Job Hunter automates the boring parts:
 - Scrapes 8 Swiss job boards and deduplicates across sources
 - Scores each job against your CV (fast keyword match + LLM deep analysis)
-- Generates tailored cover letters via Claude / DeepSeek / OpenRouter
+- Generates tailored cover letters via Claude / DeepSeek / OpenRouter / Cheaper Inference
 - Tracks every application with a Kanban board and event timeline
 - Supports multiple job directions (e.g. Agent Engineer + Perception Engineer) with separate CVs
 
@@ -127,7 +127,7 @@ That's it. Contributions of new country scrapers are very welcome — open a PR!
 ### Prerequisites
 - Python 3.11+
 - Node.js 18+
-- At least one LLM API key: [Anthropic](https://console.anthropic.com), [DeepSeek](https://platform.deepseek.com), or [OpenRouter](https://openrouter.ai/keys)
+- At least one LLM API key: [Anthropic](https://console.anthropic.com), [DeepSeek](https://platform.deepseek.com), [OpenRouter](https://openrouter.ai/keys), or [Cheaper Inference](https://cheaperinference.com)
 - Or use Ollama!
 
 ### 1. Clone & install
@@ -155,9 +155,11 @@ ANTHROPIC_API_KEY=sk-ant-...   # Claude (cover letters, LLM scoring, company loo
 DEEPSEEK_API_KEY=sk-...        # DeepSeek — cheaper alternative
 OPENROUTER_API_KEY=sk-or-...   # OpenRouter — access 100+ models via one key
 OPENROUTER_MODEL=openai/gpt-4o-mini  # any model slug from openrouter.ai/models
+CHEAPER_INFERENCE_API_KEY=ci_live_...  # Cheaper Inference — OpenAI-compatible gateway
+CHEAPER_INFERENCE_MODEL=gpt-5.4-mini   # any model id from api.cheaperinference.com/public/models
 OLLAMA_BASE_URL=http://localhost:11434/v1
 OLLAMA_MODEL=qwen3.6:latest
-LLM_PROVIDER=auto              # auto | anthropic | deepseek | openrouter | ollama
+LLM_PROVIDER=auto              # auto | anthropic | deepseek | openrouter | cheaperinference | ollama
 # Optional — one sentence describing you, prepended to the LLM scoring system
 # prompt. The CV is already in the prompt, so leave this empty unless you want to
 # steer the model (e.g. toward a career change your CV does not show yet).
@@ -166,7 +168,7 @@ CANDIDATE_PERSONA=
 
 > **LLM routing** — `auto` round-robins between every provider whose key is set.
 > Pin to a single provider with `LLM_PROVIDER=openrouter` (or `anthropic` / `deepseek`).
-> Only one key is required; all four can coexist.
+> Only one key is required; all five can coexist.
 
 ### 3. Add your CV
 
@@ -205,7 +207,7 @@ Bring up the whole stack (backend API + static frontend) with one command — no
 ```bash
 # 1. Configure: copy the template and add at least one LLM key
 cp .env.example .env
-#    edit .env → set ANTHROPIC_API_KEY / DEEPSEEK_API_KEY / OPENROUTER_API_KEY
+#    edit .env → set ANTHROPIC_API_KEY / DEEPSEEK_API_KEY / OPENROUTER_API_KEY / CHEAPER_INFERENCE_API_KEY
 
 # 2. Add your CV (the data/ directory is bind-mounted into the backend)
 cp your_cv.txt data/cv.txt
@@ -387,7 +389,7 @@ reported as a failure rather than as an empty result: the CLI lists it under
 | Scraping | `httpx`, `playwright`, `beautifulsoup4` |
 | Dedup | SHA-256 + `sentence-transformers` (MiniLM-L6) |
 | Storage | SQLite + SQLAlchemy 2.x |
-| LLM | Anthropic Claude, DeepSeek, OpenRouter (OpenAI-compatible) |
+| LLM | Anthropic Claude, DeepSeek, OpenRouter, Cheaper Inference (OpenAI-compatible) |
 | Backend | FastAPI + SSE streaming |
 | Frontend | React 18 + Vite |
 | CLI | Typer + Rich |

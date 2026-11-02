@@ -1,7 +1,9 @@
 """
-LLM provider router — round-robin between Anthropic, DeepSeek, OpenRouter, and Ollama.
+LLM provider router — round-robin between Anthropic, DeepSeek, OpenRouter,
+Cheaper Inference, and Ollama.
 
-DeepSeek, OpenRouter, and Ollama are OpenAI-compatible, so we use the openai SDK for all three.
+DeepSeek, OpenRouter, Cheaper Inference, and Ollama are OpenAI-compatible, so we
+use the openai SDK for all four.
 Anthropic uses its own SDK.
 
 Usage:
@@ -43,6 +45,8 @@ def _build_cycle() -> itertools.cycle:
         return itertools.cycle(["deepseek"])
     if settings.llm_provider == "openrouter":
         return itertools.cycle(["openrouter"])
+    if settings.llm_provider == "cheaperinference":
+        return itertools.cycle(["cheaperinference"])
     if settings.llm_provider == "ollama":
         return itertools.cycle(["ollama"])
 
@@ -54,13 +58,15 @@ def _build_cycle() -> itertools.cycle:
         available.append("deepseek")
     if settings.openrouter_api_key:
         available.append("openrouter")
+    if settings.cheaper_inference_api_key:
+        available.append("cheaperinference")
     if settings.ollama_base_url:
         available.append("ollama")
 
     if not available:
         raise RuntimeError(
             "No LLM provider configured. Set ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, "
-            "OPENROUTER_API_KEY, or OLLAMA_BASE_URL."
+            "OPENROUTER_API_KEY, CHEAPER_INFERENCE_API_KEY, or OLLAMA_BASE_URL."
         )
 
     return itertools.cycle(available)
@@ -138,6 +144,26 @@ async def _call_openrouter(system: str, user: str, max_tokens: int) -> str:
     return (response.choices[0].message.content or "").strip()
 
 
+# ── Cheaper Inference call (OpenAI-compatible) ────────────────────────────────
+
+async def _call_cheaperinference(system: str, user: str, max_tokens: int) -> str:
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(
+        api_key=settings.cheaper_inference_api_key,
+        base_url=settings.cheaper_inference_base_url,
+    )
+    response = await client.chat.completions.create(
+        model=settings.cheaper_inference_model,
+        max_tokens=max_tokens,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    )
+    return (response.choices[0].message.content or "").strip()
+
+
 # ── Ollama call (OpenAI-compatible) ───────────────────────────────────────────
 
 async def _call_ollama(system: str, user: str, max_tokens: int) -> str:
@@ -170,6 +196,8 @@ def _provider_endpoint(p: str) -> str:
         return settings.deepseek_base_url
     if p == "openrouter":
         return settings.openrouter_base_url
+    if p == "cheaperinference":
+        return settings.cheaper_inference_base_url
     if p == "ollama":
         return settings.ollama_base_url or "(OLLAMA_BASE_URL not set)"
     return "?"
@@ -195,6 +223,8 @@ async def call_llm(
         coro = _call_deepseek(system, user, max_tokens)
     elif p == "openrouter":
         coro = _call_openrouter(system, user, max_tokens)
+    elif p == "cheaperinference":
+        coro = _call_cheaperinference(system, user, max_tokens)
     elif p == "ollama":
         coro = _call_ollama(system, user, max_tokens)
     else:
@@ -221,6 +251,8 @@ async def call_llm(
                         coro = _call_deepseek(system, user, max_tokens)
                     elif p == "openrouter":
                         coro = _call_openrouter(system, user, max_tokens)
+                    elif p == "cheaperinference":
+                        coro = _call_cheaperinference(system, user, max_tokens)
                     elif p == "ollama":
                         coro = _call_ollama(system, user, max_tokens)
                 continue

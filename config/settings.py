@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     openrouter_model: str = "openai/gpt-4o-mini"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
+    # ── Cheaper Inference ──────────────────────────────────────────────────────
+    cheaper_inference_api_key: str = Field(default="", description="Cheaper Inference API key")
+    cheaper_inference_model: str = "gpt-5.4-mini"
+    cheaper_inference_base_url: str = "https://api.cheaperinference.com/v1"
+
     # ── Ollama ─────────────────────────────────────────────────────────────────
     ollama_base_url: str = ""
     ollama_model: str = "qwen3.6:latest"
@@ -43,8 +48,9 @@ class Settings(BaseSettings):
     # "anthropic"   → always use Anthropic
     # "deepseek"    → always use DeepSeek
     # "openrouter"  → always use OpenRouter
+    # "cheaperinference" → always use Cheaper Inference
     # "ollama"      → always use Ollama (local, no API key required)
-    llm_provider: Literal["auto", "anthropic", "deepseek", "openrouter", "ollama"] = "auto"
+    llm_provider: Literal["auto", "anthropic", "deepseek", "openrouter", "cheaperinference", "ollama"] = "auto"
 
     # ── Database ───────────────────────────────────────────────────────────────
     database_url: str = "sqlite:///./data/jobs.db"
@@ -132,12 +138,18 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def check_at_least_one_llm(self) -> "Settings":
-        has_cloud = self.anthropic_api_key or self.deepseek_api_key or self.openrouter_api_key
+        has_cloud = (
+            self.anthropic_api_key
+            or self.deepseek_api_key
+            or self.openrouter_api_key
+            or self.cheaper_inference_api_key
+        )
         has_local = bool(self.ollama_base_url)
         if not has_cloud and not has_local:
             raise ValueError(
                 "At least one LLM provider is required: set ANTHROPIC_API_KEY, "
-                "DEEPSEEK_API_KEY, OPENROUTER_API_KEY, or OLLAMA_BASE_URL in .env"
+                "DEEPSEEK_API_KEY, OPENROUTER_API_KEY, CHEAPER_INFERENCE_API_KEY, "
+                "or OLLAMA_BASE_URL in .env"
             )
         return self
 
